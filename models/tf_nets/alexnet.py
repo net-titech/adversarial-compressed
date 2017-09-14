@@ -7,7 +7,7 @@ class AlexNet:
     """
     def __init__(self, batch_size, image_size=227, image_channels=3, 
                  num_classes=1000, init_lr=0.1, stepsize=100000, 
-                 gamma=0.1):
+                 gamma=0.1, summary_dir="./"):
         self.batch_size = batch_size
         self.image_size = image_size
         self.image_channels = image_channels
@@ -15,6 +15,8 @@ class AlexNet:
         self.lr = init_lr
         self.lr_decay_step = stepsize
         self.gamma = gamma # lr decay factor
+        self.sum_dir = summary_dir
+        self.built=False
 
     def _create_placeholders(self):
         with tf.name_scope("data"):
@@ -23,7 +25,7 @@ class AlexNet:
                                                            self.image_size,
                                                            self.image_channels], 
                                          name="input_images")
-            self.labels = tf.placeholder(tf.int32, shape=[self.batch_size, 1],
+            self.labels = tf.placeholder(tf.int32, shape=[self.batch_size],
                                          name="train_labels")
         with tf.name_scope("settings"):
             self.training = tf.placeholder(tf.bool, shape=(), name="is_training")
@@ -85,18 +87,25 @@ class AlexNet:
                                           units=self.num_classes, name="fc8")
         with tf.name_scope("output"):
             self.predictions = {
-                "top1": tf.argmax(input=self.logits, axis=1),
+                "class": tf.argmax(input=self.logits, axis=1),
                 "probs": tf.nn.softmax(self.logits, name="softmax")
             } 
-            self.acc_top1 = tf.nn.in_top_k(self.logits, labels, 1)
-            self.acc_top5 = tf.nn.in_top_k(self.logits, labels, 5)
+        with tf.name_scope("accuracy"):
+            acc_top1 = tf.nn.in_top_k(self.logits, self.labels, 1)
+            acc_top5 = tf.nn.in_top_k(self.logits, self.labels, 5)
+            acc_top1 = tf.cast(acc_top1, tf.float32)
+            acc_top5 = tf.cast(acc_top5, tf.float32)
+            self.acc1 = tf.reduce_mean(acc_top1)
+            self.acc5 = tf.reduce_mean(acc_top5)
+            
 
     def _create_loss(self):
         with tf.name_scope("loss"):
             onehot_labels = tf.one_hot(indices=self.labels,
                                        depth=self.num_classes)
-            self.loss = tf.losses.softmax_cross_entropy(onehot_labels, 
-                                                        self.logits)
+            loss = tf.losses.softmax_cross_entropy(onehot_labels, 
+                                                   self.logits)
+            self.loss = tf.reduce_mean(loss)
 
     def _create_optimizer(self):
         # Global step for learning rate deca
@@ -104,7 +113,7 @@ class AlexNet:
                                        name="global_step")
         with tf.name_scope("trainer"):
             lr = tf.train.exponential_decay(self.lr, self.global_step,
-                                                       self.lr_decay_step, self.gamma)
+                                            self.lr_decay_step, self.gamma)
             self.optimizer = tf.train.GradientDescentOptimizer(lr)
             self.train_op = self.optimizer.minimize(self.loss, 
                                                     global_step=self.global_step) 
@@ -112,23 +121,62 @@ class AlexNet:
     def _create_summary(self):
         with tf.name_scope("summaries"):
             tf.summary.scalar("loss", self.loss)
-            tf.summary.scalar("accuracy", self.accuracy)
+            tf.summary.scalar("top1_accuracy", self.acc1)
+            tf.summary.scalar("top5_accuracy", self.acc5)
+            
 
     def _create_saver(self):
         pass
 
-    def build(self, tfgraph=None):
+    def _build(self, tfgraph=None):
         if tfgraph is None:
             tfgraph = tf.get_default_graph()
+        self.graph = tfgraph
         with tfgraph.as_default():
             self._create_placeholders()
             self._create_net()
             self._create_loss()
             self._create_optimizer()
-            self._create_summary()
-            self._create_saver()
+            # self._create_summary()
+            # self._create_saver()
+        self.built = True
 
-
+    def train(self, data_gen, epoch=1, continue_from=None, step_save=100000,
+              step_log=10000):
+        if step_log % self.batch_size != 0 :
+            print("WARNING: step_log should be a multiple of batch_size!")
+            step_log = self.batch_size * (step_log // self.batch_size + 1)
+            print("WARNING: Setting step_log to {}".format(step_log))
+        if not self.built:
+            self._build()
+        opts = tf.ConfigProto(allow_soft_placement=True, 
+                              log_device_placement=True)
+        init_op = tf.global_variables_initializer()
+        saver = tf.train.Saver()
+        with tf.Session(config=opts, graph=self.graph) as sess:
+            # Create session
+            if continue_from is not None:
+                tf_saver.restore(sess, continue_from)
+            else:
+                sess.run(tf.global_variables_initializer())
+            # Generate data and training
+            for images, labels, i in data_gen(epoch, self.batch_size, "train"):
+                # Print step log. TODO: Add val/test data.
+                if i % step_log == 0:
+                    acc1, acc5 = sess.run([self.acc1, self.acc5], feed_dict={
+                        self.input: images, self.labels: labels, 
+                        self.training: False})
+                    print("Step {}, training accuracy: {} (top 1), {} (top 5)".\
+                        format(i, acc1, acc5))
+                # Training
+                sess.run([self.train_op], feed_dict={
+                    self.input: images, self.labels: labels, 
+                    self.training: True})
+            # Checkpoint
+            if i % step_save == 0:
+                pass
+                # TODO: Add saver
+                   
 class AlexNetVD(AlexNet):
     """
     AlexNet with Variational Dropout
@@ -141,4 +189,4 @@ class AlexNetSVD(AlexNet):
     """
     AlexNet with Sparse Variational Dropout
     Paper: (Molchanov, 2017)
-    df""
+    """
