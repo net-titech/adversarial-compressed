@@ -160,22 +160,25 @@ class AlexNet:
             else:
                 sess.run(tf.global_variables_initializer())
             # Generate data and training
-            for images, labels, i in data_gen(epoch, self.batch_size, "train"):
-                # Print step log. TODO: Add val/test data.
-                if i % step_log == 0:
-                    acc1, acc5 = sess.run([self.acc1, self.acc5], feed_dict={
-                        self.input: images, self.labels: labels, 
-                        self.training: False})
-                    print("Step {}, training accuracy: {} (top 1), {} (top 5)".\
-                        format(i, acc1, acc5))
-                # Training
-                sess.run([self.train_op], feed_dict={
-                    self.input: images, self.labels: labels, 
-                    self.training: True})
-            # Checkpoint
-            if i % step_save == 0:
-                pass
-                # TODO: Add saver
+            for e in range(epoch):
+                print("======== Epoch {} ========".format(e))
+                for images, labels in data_gen(self.batch_size, "train"):
+                    # Print step log. TODO: Add val/test data.
+                    gl_step = self.global_step.eval()
+                    if gl_step % step_log == 0:
+                        acc1, acc5 = sess.run([self.acc1, self.acc5], feed_dict={
+                            self.input: images, self.labels: labels, 
+                            self.training: False})
+                        print("Step {}, training accuracy: {} (top 1), {} (top 5)".\
+                            format(gl_step, acc1, acc5))
+                    # Training
+                    _, gl_step, bloss = sess.run([self.train_op, self.global_step,  
+                        self.loss], feed_dict={self.input: images, 
+                        self.labels: labels, self.training: True})
+                    print("Step {}, batch loss: {}".format(gl_step, bloss))
+                    # Checkpoint TODO: Add saver
+                    if i % step_save == 0:
+                        pass
                    
 class AlexNetVD(AlexNet):
     """
