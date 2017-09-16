@@ -1,4 +1,5 @@
 import tensorflow as tf
+from utils import log_training
 
 class AlexNet:
     """
@@ -16,16 +17,17 @@ class AlexNet:
         self.lr_decay_step = stepsize
         self.gamma = gamma # lr decay factor
         self.sum_dir = summary_dir
-        self.built=False
+        self.built = False
+        self.name = "AlexNet"
 
     def _create_placeholders(self):
         with tf.name_scope("data"):
-            self.input = tf.placeholder(tf.float32, shape=[self.batch_size, 
+            self.input = tf.placeholder(tf.float32, shape=[None, 
                                                            self.image_size, 
                                                            self.image_size,
                                                            self.image_channels], 
                                          name="input_images")
-            self.labels = tf.placeholder(tf.int32, shape=[self.batch_size],
+            self.labels = tf.placeholder(tf.int32, shape=[None],
                                          name="train_labels")
         with tf.name_scope("settings"):
             self.training = tf.placeholder(tf.bool, shape=(), name="is_training")
@@ -123,10 +125,8 @@ class AlexNet:
             tf.summary.scalar("loss", self.loss)
             tf.summary.scalar("top1_accuracy", self.acc1)
             tf.summary.scalar("top5_accuracy", self.acc5)
-            
-
-    def _create_saver(self):
-        pass
+            tf.summary.histogram("histogram loss", self.loss)
+            self.summary_ops = tf.summary.merge_all()
 
     def _build(self, tfgraph=None):
         if tfgraph is None:
@@ -137,17 +137,17 @@ class AlexNet:
             self._create_net()
             self._create_loss()
             self._create_optimizer()
-            # self._create_summary()
-            # self._create_saver()
+            self._create_summary()
         self.built = True
     
     def visualize_graph(self, folder="./graphs"):
         """
+        [===in python or ipython===]
         test = AlexNet(100)
         test.visualize_graph() 
-        <in shell>
+        [===in shell===]
         $ tensorboard --logdir="./graphs"
-        <in browser>
+        [===in browser===]
         GOTO: http://<machine_ip>:6006/#graphs
         """
         if not self.built:
@@ -157,42 +157,53 @@ class AlexNet:
         writer.close()
 
     def train(self, data_gen, data_size, epoch=1, continue_from=None, 
-              step_save=1000, step_log=50):
+              step_save=10000, step_log=100, step_training_log=20):
         if not self.built:
             self._build()
-        opts = tf.ConfigProto(allow_soft_placement=True, 
+        opts = tf.ConfigProto(allow_soft_placement=True,
                               log_device_placement=True)
         init_op = tf.global_variables_initializer()
         saver = tf.train.Saver()
         with tf.Session(config=opts, graph=self.graph) as sess:
             # Create session
             if continue_from is not None:
-                tf_saver.restore(sess, continue_from)
+                saver.restore(sess, continue_from)
             else:
                 sess.run(tf.global_variables_initializer())
+            writer = tf.summary.FileWriter("./logs", sess.graph)
             images_labels = data_gen(self.batch_size, "train")
+            val_images_labels = data_gen(self.batch_size, "val")
             # Generate data and training
             for e in range(epoch):
                 print("======== Epoch {} ========".format(e))
                 for _ in range(data_size//self.batch_size):
                     images, labels = next(images_labels)
-                    # Print step log. TODO: Add val/test data.
                     gl_step = self.global_step.eval()
                     if gl_step % step_log == 0:
+                        # Training accuracies
                         acc1, acc5 = sess.run([self.acc1, self.acc5], feed_dict={
                             self.input: images, self.labels: labels, 
                             self.training: False})
                         print("Step {}, training accuracy: {} (top 1), {} (top 5)".\
                             format(gl_step, acc1, acc5))
+                        # Validation accuracies
+                        val_images, val_labels = next(val_images_labels)
+                        acc1, acc5 = sess.run([self.acc1, self.acc5], feed_dict={
+                            self.input: val_images, self.labels: val_labels, 
+                            self.training: False})
+                        print("Step {}, validation accuracy: {} (top 1), {} (top 5)".\
+                            format(gl_step, acc1, acc5))
                     # Training
-                    _, gl_step, bloss = sess.run([self.train_op, self.global_step,  
-                        self.loss], feed_dict={self.input: images, 
+                    _, s, gl_step, bloss = sess.run([self.train_op, self.summary_ops, 	
+                        self.global_step, self.loss], feed_dict={self.input: images,
                         self.labels: labels, self.training: True})
-                    if gl_step % 10 == 0:
-                        print("Step {}, batch loss: {}".format(gl_step, bloss))
-                    # Checkpoint TODO: Add saver
-                    if gl_step % step_save == 0:
-                        pass
+                    writer.add_summary(s, global_step=gl_step)
+                    if gl_step % step_training_log == 0:
+                        log_training(gl_step, bloss)
+                    if (gl_step+1) % step_save == 0:
+                        print("Saving checkpoint...")
+                        saver.save(sess, "./checkpoints/{}".format(self.name),
+                                   global_step = gl_step)
                    
 class AlexNetVD(AlexNet):
     """
@@ -214,6 +225,4 @@ class AlexNetSVD(AlexNet):
         super().__init__(**kwargs)
         self.log_alpha = log_alpha
         self.log_sigma = log_sigma
-
-
 
