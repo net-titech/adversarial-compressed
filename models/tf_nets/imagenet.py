@@ -1,7 +1,7 @@
 import tensorflow as tf
 import os
 from sklearn.utils import shuffle
-from scipy.ndimage import imread
+from scipy.misc import imread
 
 rseed = 69
 
@@ -19,6 +19,8 @@ word_dict = {}  # Synset ids -> words. E.g. n01514668->cock
 ids_list = []  # Label ids -> synset ids. E.g. 7->n01514668
 train_data = None
 val_data = None
+train_size = 1281167
+val_size = 50000
 
 def strip(string):
     return string.strip()
@@ -44,17 +46,19 @@ def create_ids_list():
     return ids_list
 
 def read_data():
-    global train_data
-    global val_data
+    global train_data, val_data, train_size, val_size
     with open(os.path.join(DATALOC, TRAIN_FILE)) as f:
         train_data = [d for d in map(strip, f.readlines())]
+        train_size = len(train_data)
     with open(os.path.join(DATALOC, VAL_FILE)) as f:
         val_data = [d for d in map(strip, f.readlines())]
+        val_size = len(val_data)
 
 def gen_data(batch_size, phase):
-    """Generate one epoch, yeild batches"""
     global train_data
     global val_data
+    if train_data is None or val_data is None:
+        read_data()
     if phase.lower() == "train":
         data = train_data
         folder = os.path.join(DATALOC, TRAIN_LOC)
@@ -73,7 +77,8 @@ def to_images_labels(data_lines, folder):
     labels = []
     for datum in data_lines:
         image_path, label = datum.split(" ", 1)
-        img = imread(os.path.join(folder, image_path))
+        img = imread(os.path.join(folder, image_path), mode="RGB")  # TODO: Experiments with modes
+        img = img/255  # TODO: Study data normalization
         label = int(label)
         images.append(img)
         labels.append(label)
