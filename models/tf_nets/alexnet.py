@@ -140,13 +140,24 @@ class AlexNet:
             # self._create_summary()
             # self._create_saver()
         self.built = True
+    
+    def visualize_graph(self, folder="./graphs"):
+        """
+        test = AlexNet(100)
+        test.visualize_graph() 
+        <in shell>
+        $ tensorboard --logdir="./graphs"
+        <in browser>
+        GOTO: http://<machine_ip>:6006/#graphs
+        """
+        if not self.built:
+            self._build()
+        with tf.Session(graph=self.graph) as sess:
+            writer = tf.summary.FileWriter(folder, sess.graph)
+        writer.close()
 
-    def train(self, data_gen, epoch=1, continue_from=None, step_save=100000,
-              step_log=10000):
-        if step_log % self.batch_size != 0 :
-            print("WARNING: step_log should be a multiple of batch_size!")
-            step_log = self.batch_size * (step_log // self.batch_size + 1)
-            print("WARNING: Setting step_log to {}".format(step_log))
+    def train(self, data_gen, data_size, epoch=1, continue_from=None, 
+              step_save=1000, step_log=50):
         if not self.built:
             self._build()
         opts = tf.ConfigProto(allow_soft_placement=True, 
@@ -159,10 +170,12 @@ class AlexNet:
                 tf_saver.restore(sess, continue_from)
             else:
                 sess.run(tf.global_variables_initializer())
+            images_labels = data_gen(self.batch_size, "train")
             # Generate data and training
             for e in range(epoch):
                 print("======== Epoch {} ========".format(e))
-                for images, labels in data_gen(self.batch_size, "train"):
+                for _ in range(data_size//self.batch_size):
+                    images, labels = next(images_labels)
                     # Print step log. TODO: Add val/test data.
                     gl_step = self.global_step.eval()
                     if gl_step % step_log == 0:
@@ -175,9 +188,10 @@ class AlexNet:
                     _, gl_step, bloss = sess.run([self.train_op, self.global_step,  
                         self.loss], feed_dict={self.input: images, 
                         self.labels: labels, self.training: True})
-                    print("Step {}, batch loss: {}".format(gl_step, bloss))
+                    if gl_step % 10 == 0:
+                        print("Step {}, batch loss: {}".format(gl_step, bloss))
                     # Checkpoint TODO: Add saver
-                    if i % step_save == 0:
+                    if gl_step % step_save == 0:
                         pass
                    
 class AlexNetVD(AlexNet):
@@ -185,7 +199,10 @@ class AlexNetVD(AlexNet):
     AlexNet with Variational Dropout
     Paper: (Kingma, 2015)
     """
-    pass
+    def __init__(self, alpha, sigma, **kwargs):
+        super().__init__(**kwargs)
+        self.alpha = alpha
+        self.sigma = sigma
 
 
 class AlexNetSVD(AlexNet):
@@ -193,3 +210,10 @@ class AlexNetSVD(AlexNet):
     AlexNet with Sparse Variational Dropout
     Paper: (Molchanov, 2017)
     """
+    def __init__(self, log_alpha, log_sigma, **kwargs):
+        super().__init__(**kwargs)
+        self.log_alpha = log_alpha
+        self.log_sigma = log_sigma
+
+
+
