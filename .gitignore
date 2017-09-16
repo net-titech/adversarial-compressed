@@ -99,3 +99,7 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# Logs and checkpoints
+checkpoints/
+logs/
