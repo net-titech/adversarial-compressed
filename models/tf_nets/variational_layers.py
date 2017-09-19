@@ -1,7 +1,7 @@
 import tensorflow as tf
-from tensorflow.layers import Dense
+from tensorflow.contrib.keras import layers
 
-class DenseVariationalDropout(Dense):
+class DenseVariationalDropout(layers.Dense):
     """Variational Dropout for fully connected layer
     Paper: Variational Dropout and the Local Reparameterization Trick
     (Kingma, 2015)
@@ -16,7 +16,8 @@ class DenseVariationalDropout(Dense):
         self.alpha_reg = alpha_reg 
         self.use_alpha_bias = use_alpha_bias
 
-    def build(self, input_shape):
+    def build(self, input_shape, dropout_mode="weights"):
+        # TODO: Implement weights and units dropout modes
         input_shape = tf.TensorShape(input_shape)
         self.alpha = self.add_variable("alpha", 
                                        shape=[input_shape[-1].value, self.units],
@@ -35,7 +36,11 @@ class DenseVariationalDropout(Dense):
             self.alpha_bias = None
         super(DenseVariationalDropout, self).build(input_shape)
     
-    def call(self, inputs):
+    def call(self, inputs, training=False):
+        # Deterministic
+        if not training:
+            return super(DenseVariationalDropout, self).call(inputs)
+        # Variational Dropout
         inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
         shape = inputs.get_shape().as_list()
         output_shape = shape[:1] + [self.units]
@@ -62,12 +67,13 @@ class DenseVariationalDropout(Dense):
             return self.activation(outputs)
         return outputs
 
-    def denseSpVD(
-        inputs,
-        init_alpha,
-        alpha_reg,
-        use_alpha_bias,
-        **kwargs):
-        layer = DenseVariationalDropout(init_alpha, alpha_reg,
-                                        use_alpha_bias, **kwargs)
-        return layer.apply(inputs)
+
+def denseVD(
+    inputs,
+    init_alpha,
+    alpha_reg,
+    use_alpha_bias,
+    **kwargs):
+    layer = DenseVariationalDropout(init_alpha, alpha_reg,
+                                    use_alpha_bias, **kwargs)
+    return layer.apply(inputs)
