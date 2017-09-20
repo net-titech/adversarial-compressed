@@ -1,15 +1,14 @@
 import tensorflow as tf
 from utils import log_training
-from variational_layers import denseVD
 
-class AlexNet:
+class VGG16:
     """
-    BLVC AlexNet (Single stream version)
-    Paper: http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks 
+    VGG-16-like network with parameter scale k
+    Paper: TODO
     """
     def __init__(self, batch_size, image_size=227, image_channels=3, 
-                 num_classes=1000, init_lr=0.1, stepsize=100000, 
-                 gamma=0.1, summary_dir="./"):
+                 num_classes=1000, scale=1.0, init_lr=0.1, 
+                 stepsize=100000, gamma=0.1, summary_dir="./logs"):
         self.batch_size = batch_size
         self.image_size = image_size
         self.image_channels = image_channels
@@ -21,7 +20,8 @@ class AlexNet:
         self.gamma = gamma # lr decay factor
         self.sum_dir = summary_dir
         self.built = False
-        self.name = "AlexNet"
+        self.k = scale # Affects number of filters
+        self.name = "VGG-16-{}".format(self.k)
 
     def _create_placeholders(self):
         with tf.name_scope("data"):
@@ -35,46 +35,43 @@ class AlexNet:
         with tf.name_scope("settings"):
             self.training = tf.placeholder(tf.bool, shape=(), name="is_training")
 
+    def _convolution_group(self, inputs, name, num_filters, ksize, strides):
+        # TODO: Implement num_layer for automatic add same layers
+        conv1 = tf.layers.conv2d(inputs=inputs, filters=int(num_filters*self.k),
+                                 kernel_size=size, strides=1, padding="same",
+                                 activation=tf.nn.relu, name=name+"conv1")
+        conv2 = tf.layers.conv2d(inputs=conv1, filters=int(num_filters*self.k),
+                                 kernel_size=size, strides=1, padding="same",
+                                 activation=tf.nn.relu, name=name+"conv2")
+        conv3 = tf.layers.conv2d(inputs=conv2, filters=int(num_filters*self.k),
+                                 kernel_size=size, strides=1, padding="same",
+                                 activation=tf.nn.relu, name=name+"conv3")
+        return conv3
+
+
     def _create_net(self):
-        with tf.name_scope("convolution_group"):
-            # conv1 11x11x96
-            conv1 = tf.layers.conv2d(inputs=self.input, filters=96,
-                                     kernel_size=11, strides=4,
-                                     padding='same', activation=tf.nn.relu,
-                                     name="conv1")
+        with tf.name_scope("convolution_groups"):
+
+            # TODO: Batch Norm, LRN
+
+            # First convolution group 3x3x64 (2 layers) + 2x2 pooling stride 2
+            cg1 = self._convolution_group(inputs=self.input, name="GROUP-1", 
+                                          num_filters)
+            maxpool1 = tf.layers.max_pooling2d(inputs=cg1, pool_size=2, stride=2)
+
+            # Second convolution group 3x3x128 (2 layers)
+            cg2 = self._convolution_group(inputs=maxpool1, name="GROUP-2", 
+                                          num_filters)
+            maxpool2 = tf.layers.max_pooling2d(inputs=cg2, pool_size=3)
+        
+            # Third convolution group 3x3x256 (3 layers)
+            cg3 = self._convolution_group(inputs=maxpool2, name="GROUP-3"
+                                          num_filters)
+            maxpool3 = tf.layers.max_pooling2d(inputs=cg3, pool_size=3)
+        
             lrn1 = tf.nn.lrn(input=conv1, depth_radius=5, alpha=0.0001, 
                              beta=0.75, name="lrn1")
-            maxpool1 = tf.layers.max_pooling2d(inputs=lrn1, pool_size=3,
-                                               strides=2, padding="valid",
-                                               name="maxpool1")
-            # conv2 5x5x256
-            conv2 = tf.layers.conv2d(inputs=maxpool1, filters=256,
-                                     kernel_size=5, strides=1,
-                                     padding='same', activation=tf.nn.relu,
-                                     name="conv2")
-            lrn2 = tf.nn.lrn(input=conv2, depth_radius=5, alpha=0.0001, 
-                             beta=0.75, name="lrn1")
-            maxpool2 = tf.layers.max_pooling2d(inputs=lrn2, pool_size=3,
-                                               strides=2, padding="valid",
-                                               name="maxpool2")
-            # conv3 3x3x384
-            conv3 = tf.layers.conv2d(inputs=maxpool2, filters=384,
-                                     kernel_size=3, strides=1,
-                                     padding="same", activation=tf.nn.relu,
-                                     name="conv3")
-            # conv4 3x3x384
-            conv4 = tf.layers.conv2d(inputs=conv3, filters=384,
-                                     kernel_size=3, strides=1,
-                                     padding="same", activation=tf.nn.relu,
-                                     name="conv4")
-            # conv5 3x3x256
-            conv5 = tf.layers.conv2d(inputs=conv4, filters=256,
-                                     kernel_size=3, strides=1,
-                                     padding="same", activation=tf.nn.relu,
-                                     name="conv5")
-            maxpool5 = tf.layers.max_pooling2d(inputs=conv5, pool_size=3,
-                                               strides=2, padding="valid",
-                                               name="maxpool5")
+
         with tf.name_scope("fully_connected_group"): 
             # fc6 4096 units
             flat5 = tf.contrib.layers.flatten(maxpool5)
@@ -113,7 +110,7 @@ class AlexNet:
             self.loss = tf.reduce_mean(loss)
 
     def _create_optimizer(self):
-        # Global step for learning rate deca
+        # Global step for learning rate decay
         self.global_step = tf.Variable(0, dtype=tf.int32, trainable=False,
                                        name="global_step")
         with tf.name_scope("trainer"):
@@ -123,13 +120,14 @@ class AlexNet:
             self.train_op = self.optimizer.minimize(self.loss, 
                                                     global_step=self.global_step) 
             # TODO: Print learning rate
+            # TODO: Match training policy with the original paper
 
     def _create_summary(self):
         with tf.name_scope("summaries"):
             tf.summary.scalar("loss", self.loss)
             tf.summary.scalar("top1_accuracy", self.acc1)
             tf.summary.scalar("top5_accuracy", self.acc5)
-            tf.summary.histogram("histogram_loss", self.loss)
+            tf.summary.histogram("histogram loss", self.loss)
             self.summary_ops = tf.summary.merge_all()
 
     def _build(self, tfgraph=None):
@@ -214,79 +212,11 @@ class AlexNetVD(AlexNet):
     AlexNet with Variational Dropout
     Paper: (Kingma, 2015)
     """
-    def __init__(self, init_alpha, **kwargs):
+    def __init__(self, alpha, sigma, **kwargs):
         super().__init__(**kwargs)
-        self.init_alpha = init_alpha
-        
-    def _create_net(self):
-        with tf.name_scope("convolution_group"):
-            # conv1 11x11x96
-            conv1 = tf.layers.conv2d(inputs=self.input, filters=96,
-                                     kernel_size=11, strides=4,
-                                     padding='same', activation=tf.nn.relu,
-                                     name="conv1")
-            lrn1 = tf.nn.lrn(input=conv1, depth_radius=5, alpha=0.0001, 
-                             beta=0.75, name="lrn1")
-            maxpool1 = tf.layers.max_pooling2d(inputs=lrn1, pool_size=3,
-                                               strides=2, padding="valid",
-                                               name="maxpool1")
-            # conv2 5x5x256
-            conv2 = tf.layers.conv2d(inputs=maxpool1, filters=256,
-                                     kernel_size=5, strides=1,
-                                     padding='same', activation=tf.nn.relu,
-                                     name="conv2")
-            lrn2 = tf.nn.lrn(input=conv2, depth_radius=5, alpha=0.0001, 
-                             beta=0.75, name="lrn1")
-            maxpool2 = tf.layers.max_pooling2d(inputs=lrn2, pool_size=3,
-                                               strides=2, padding="valid",
-                                               name="maxpool2")
-            # conv3 3x3x384
-            conv3 = tf.layers.conv2d(inputs=maxpool2, filters=384,
-                                     kernel_size=3, strides=1,
-                                     padding="same", activation=tf.nn.relu,
-                                     name="conv3")
-            # conv4 3x3x384
-            conv4 = tf.layers.conv2d(inputs=conv3, filters=384,
-                                     kernel_size=3, strides=1,
-                                     padding="same", activation=tf.nn.relu,
-                                     name="conv4")
-            # conv5 3x3x256
-            conv5 = tf.layers.conv2d(inputs=conv4, filters=256,
-                                     kernel_size=3, strides=1,
-                                     padding="same", activation=tf.nn.relu,
-                                     name="conv5")
-            maxpool5 = tf.layers.max_pooling2d(inputs=conv5, pool_size=3,
-                                               strides=2, padding="valid",
-                                               name="maxpool5")
-        with tf.name_scope("fully_connected_group"): 
-            # fc6 4096 units with variational dropout
-            flat5 = tf.contrib.layers.flatten(maxpool5)
-            fc6 = denseVD(inputs=flat5, units=4096, 
-                          activation=tf.nn.relu, name="fc6")
-            dropout6 = tf.layers.dropout(inputs=fc6, rate=0.5, 
-                                         training=self.training,
-                                         name="dropout6")
-            # fc7 4096 units with variational dropout
-            fc7 = tf.layers.dense(inputs=dropout6, units=4096, 
-                                  activation=tf.nn.relu, name="fc7")
-            dropout7 = tf.layers.dropout(inputs=fc7, rate=0.5, 
-                                         training=self.training,
-                                         name="dropout7")
-            # fc8 is also logits with variational dropout
-            self.logits = tf.layers.dense(inputs=dropout7, 
-                                          units=self.num_classes, name="fc8")
-        with tf.name_scope("output"):
-            self.predictions = {
-                "class": tf.argmax(input=self.logits, axis=1),
-                "probs": tf.nn.softmax(self.logits, name="softmax")
-            } 
-        with tf.name_scope("accuracy"):
-            acc_top1 = tf.nn.in_top_k(self.logits, self.labels, 1)
-            acc_top5 = tf.nn.in_top_k(self.logits, self.labels, 5)
-            acc_top1 = tf.cast(acc_top1, tf.float32)
-            acc_top5 = tf.cast(acc_top5, tf.float32)
-            self.acc1 = tf.reduce_mean(acc_top1)
-            self.acc5 = tf.reduce_mean(acc_top5)
+        self.alpha = alpha
+        self.sigma = sigma
+
 
 class AlexNetSVD(AlexNet):
     """
