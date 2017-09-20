@@ -25,12 +25,12 @@ class AlexNet:
 
     def _create_placeholders(self):
         with tf.name_scope("data"):
-            self.input = tf.placeholder(tf.float32, shape=[None, 
+            self.input = tf.placeholder(tf.float32, shape=[self.batch_size, 
                                                            self.image_size, 
                                                            self.image_size,
                                                            self.image_channels], 
                                          name="input_images")
-            self.labels = tf.placeholder(tf.int32, shape=[None],
+            self.labels = tf.placeholder(tf.int32, shape=[self.batch_size],
                                          name="train_labels")
         with tf.name_scope("settings"):
             self.training = tf.placeholder(tf.bool, shape=(), name="is_training")
@@ -261,20 +261,14 @@ class AlexNetVD(AlexNet):
         with tf.name_scope("fully_connected_group"): 
             # fc6 4096 units with variational dropout
             flat5 = tf.contrib.layers.flatten(maxpool5)
-            fc6 = denseVD(inputs=flat5, units=4096, 
-                          activation=tf.nn.relu, name="fc6")
-            dropout6 = tf.layers.dropout(inputs=fc6, rate=0.5, 
-                                         training=self.training,
-                                         name="dropout6")
+            fc6 = denseVD(inputs=flat5, units=4096, training=self.training,
+                          activation=tf.nn.relu, name="vdfc6")
             # fc7 4096 units with variational dropout
-            fc7 = tf.layers.dense(inputs=dropout6, units=4096, 
-                                  activation=tf.nn.relu, name="fc7")
-            dropout7 = tf.layers.dropout(inputs=fc7, rate=0.5, 
-                                         training=self.training,
-                                         name="dropout7")
+            fc7 = denseVD(inputs=fc6, units=4096, training=self.training,
+                                    activation=tf.nn.relu, name="vdfc7")
             # fc8 is also logits with variational dropout
-            self.logits = tf.layers.dense(inputs=dropout7, 
-                                          units=self.num_classes, name="fc8")
+            self.logits = denseVD(inputs=fc7, training=self.training,
+                                            units=self.num_classes, name="vdfc8")
         with tf.name_scope("output"):
             self.predictions = {
                 "class": tf.argmax(input=self.logits, axis=1),
