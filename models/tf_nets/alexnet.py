@@ -1,6 +1,6 @@
 import tensorflow as tf
 from utils import log_training
-from variational_layers import denseVD
+from variational_layers import denseVD, vd_reg
 
 class AlexNet:
     """
@@ -262,14 +262,17 @@ class AlexNetVD(AlexNet):
         with tf.name_scope("fully_connected_group"): 
             # fc6 4096 units with variational dropout
             flat5 = tf.contrib.layers.flatten(maxpool5)
-            fc6 = denseVD(inputs=flat5, units=4096, training=self.training,
+            fc6, lvdfc6 = denseVD(inputs=flat5, units=4096, training=self.training,
                           activation=tf.nn.relu, name="vdfc6")
             # fc7 4096 units with variational dropout
-            fc7 = denseVD(inputs=fc6, units=4096, training=self.training,
+            fc7, lvdfc7 = denseVD(inputs=fc6, units=4096, training=self.training,
                                     activation=tf.nn.relu, name="vdfc7")
             # fc8 is also logits with variational dropout
-            self.logits = denseVD(inputs=fc7, training=self.training,
-                                            units=self.num_classes, name="vdfc8")
+            self.logits, lvdfc8 = denseVD(inputs=fc7, training=self.training,
+                                          units=self.num_classes, name="vdfc8")
+        
+        self.vd_layers = [lvdfc6, lvdfc7, lvdfc8]
+
         with tf.name_scope("output"):
             self.predictions = {
                 "class": tf.argmax(input=self.logits, axis=1),
@@ -282,6 +285,15 @@ class AlexNetVD(AlexNet):
             acc_top5 = tf.cast(acc_top5, tf.float32)
             self.acc1 = tf.reduce_mean(acc_top1)
             self.acc5 = tf.reduce_mean(acc_top5)
+
+    def _create_loss(self, num_samples, rw=1.0):
+        with tf.name_scope("loss"):
+            onehot_labels = tf.one_hot(indices=self.labels,
+                                       depth=self.num_classes)
+            ell = -tf.reduce_sum(tf.losses.softmax_cross_entropy(onehot_labels,
+                                                                 self.logits))
+            vd_reg = tf.reduce_sum([vd_reg(l.get_alpha()) for l in self.vd_layers])
+            self.loss = -((num_samples * 1.0 / self.batch_size)*ell - rw * vd_reg)
 
 class AlexNetSVD(AlexNet):
     """
