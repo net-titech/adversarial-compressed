@@ -7,7 +7,7 @@ class AlexNet:
     BLVC AlexNet (Single stream version)
     Paper: http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks 
     """
-    def __init__(self, batch_size, image_size=227, image_channels=3, 
+    def __init__(self, batch_size=256, image_size=227, image_channels=3, 
                  num_classes=1000, init_lr=0.1, stepsize=100000, 
                  gamma=0.1, summary_dir="./"):
         self.batch_size = batch_size
@@ -214,9 +214,10 @@ class AlexNetVD(AlexNet):
     AlexNet with Variational Dropout
     Paper: (Kingma, 2015)
     """
-    def __init__(self, init_alpha, **kwargs):
+    def __init__(self, init_alpha=0.99, **kwargs):
         super().__init__(**kwargs)
         self.init_alpha = init_alpha
+        self.name="AlexNetVD"
         
     def _create_net(self):
         with tf.name_scope("convolution_group"):
