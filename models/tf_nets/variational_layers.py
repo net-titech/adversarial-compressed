@@ -96,3 +96,15 @@ def denseVD(
     layer = DenseVarDrop(init_alpha, alpha_reg,
                                     use_alpha_bias, **kwargs)
     return layer.apply(inputs, training=training)
+
+def vd_reg(alpha, constant=0.5):
+    """Compute DK divergece between approximate
+    posterior and the prior. This term is refered 
+    as a regularization term prefering the posterior
+    to be similar to the prior."""
+    # TODO: Think about the constant value
+    c1 = 1.16145124
+    c2 = -1.50204118
+    c3 = 0.58629921
+    return constant + 0.5*tf.log(alpha) + tf.multiply(c1,alpha) +\
+           tf.multiply(c2,tf.pow(alpha,2)) + tf.multiply(c3,tf.pow(alpha,3))
