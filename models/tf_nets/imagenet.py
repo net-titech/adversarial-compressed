@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 import os
 from sklearn.utils import shuffle
 from scipy.misc import imread
@@ -73,12 +74,13 @@ def gen_data(batch_size, phase):
             yield to_images_labels(data[i*batch_size:(i+1)*batch_size], folder)
 
 def to_images_labels(data_lines, folder):
+    """Note: channel last for cuDNN""" 
     images = []
     labels = []
     for datum in data_lines:
         image_path, label = datum.split(" ", 1)
-        img = imread(os.path.join(folder, image_path), mode="RGB")  # TODO: Experiments with modes
-        img = img/255  # TODO: Study data normalization
+        img = imread(os.path.join(folder, image_path), mode="RGB")
+        img = img - np.mean(img)
         label = int(label)
         images.append(img)
         labels.append(label)
