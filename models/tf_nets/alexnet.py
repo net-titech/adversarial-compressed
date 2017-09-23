@@ -8,8 +8,8 @@ class AlexNet:
     Paper: http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks 
     """
     def __init__(self, batch_size=256, image_size=227, image_channels=3, 
-                 num_classes=1000, init_lr=0.1, stepsize=100000, 
-                 gamma=0.1, l2_scale=0.01, summary_dir="./"):
+                 num_classes=1000, init_lr=0.1, stepsize=100000, momentum=0.9
+                 gamma=0.1, l2_scale=0.01, name="AlexNet", summary_dir="./"):
         self.batch_size = batch_size
         self.image_size = image_size
         self.image_channels = image_channels
@@ -22,7 +22,8 @@ class AlexNet:
         self.sum_dir = summary_dir
         self.built = False
         self.l2_scale = l2_scale
-        self.name = "AlexNet"
+        self.momentum = momentum
+        self.name = name
 
     def _create_placeholders(self):
         with tf.name_scope("data"):
@@ -102,7 +103,7 @@ class AlexNet:
 
     def _create_loss(self):
         with tf.name_scope("loss"):
-            weights = [var for var in tf.global_variables() if "kernel" in var]
+            weights = [var for var in tf.global_variables() if "kernel" in var.name]
             l2_term = tf.reduce_sum([tf.nn.l2_loss(w) for w in weights])
             onehot_labels = tf.one_hot(indices=self.labels,
                                        depth=self.num_classes)
@@ -117,7 +118,7 @@ class AlexNet:
         with tf.name_scope("trainer"):
             lr = tf.train.exponential_decay(self.lr, self.global_step,
                                             self.lr_decay_step, self.gamma)
-            self.optimizer = tf.train.GradientDescentOptimizer(lr)
+            self.optimizer = tf.train.MomentumOptimizer(lr, self.momentum)
             self.train_op = self.optimizer.minimize(self.loss, 
                                                     global_step=self.global_step) 
             # TODO: Print learning rate
