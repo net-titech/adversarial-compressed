@@ -1,5 +1,6 @@
 import tensorflow as tf
 from alexnet import AlexNet
+from variational_layers import denseVD, convVD, vd_reg
 
 class AlexNetVD(AlexNet):
     """
@@ -89,7 +90,7 @@ class AlexNetVD(AlexNet):
                                        depth=self.num_classes)
             ell = -tf.reduce_sum(tf.losses.softmax_cross_entropy(onehot_labels,
                                                                  self.logits))
-            vd_reg = tf.reduce_sum([vd_reg(l.get_alpha()) for l in self.vd_layers])
-            self.loss = -((num_samples * 1.0 / self.batch_size)*ell - rw * vd_reg)
+            reg = tf.reduce_sum([vd_reg(l.get_alpha()) for l in self.vd_layers])
+            self.loss = -((num_samples * 1.0 / self.batch_size)*ell - rw * reg)
 
 
