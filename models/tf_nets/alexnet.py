@@ -8,8 +8,8 @@ class AlexNet:
     Paper: http://papers.nips.cc/paper/4824-imagenet-classification-with-deep-convolutional-neural-networks 
     """
     def __init__(self, batch_size=256, image_size=227, image_channels=3, 
-                 num_classes=1000, init_lr=0.1, stepsize=100000, momentum=0.9
-                 gamma=0.1, l2_scale=0.01, name="AlexNet", summary_dir="./"):
+                 num_classes=1000, init_lr=0.1, stepsize=100000, momentum=0.9,
+                 gamma=0.1, l2_scale=0.001, name="AlexNet", summary_dir="./"):
         self.batch_size = batch_size
         self.image_size = image_size
         self.image_channels = image_channels
@@ -99,17 +99,17 @@ class AlexNet:
             acc_top5 = tf.cast(acc_top5, tf.float32)
             self.acc1 = tf.reduce_mean(acc_top1)
             self.acc5 = tf.reduce_mean(acc_top5)
-            
 
     def _create_loss(self):
         with tf.name_scope("loss"):
             weights = [var for var in tf.global_variables() if "kernel" in var.name]
-            l2_term = tf.reduce_sum([tf.nn.l2_loss(w) for w in weights])
+            print("Debug: ", weights)
+            l2_term = tf.reduce_sum([tf.sqrt(tf.nn.l2_loss(w)) for w in weights])
             onehot_labels = tf.one_hot(indices=self.labels,
                                        depth=self.num_classes)
-            loss = tf.losses.softmax_cross_entropy(onehot_labels, self.logits) \
-                   + l2_term
+            loss = tf.losses.softmax_cross_entropy(onehot_labels, self.logits)
             self.loss = tf.reduce_mean(loss)
+            self.loss += self.l2_scale * l2_term
 
     def _create_optimizer(self):
         # Global step for learning rate deca
@@ -128,7 +128,7 @@ class AlexNet:
             tf.summary.scalar("loss", self.loss)
             tf.summary.scalar("top1_accuracy", self.acc1)
             tf.summary.scalar("top5_accuracy", self.acc5)
-            tf.summary.histogram("histogram_loss", self.loss)
+            tf.summary.histogram("loss_hist", self.loss)
             self.summary_ops = tf.summary.merge_all()
 
     def _build(self, tfgraph=None):
@@ -163,8 +163,7 @@ class AlexNet:
               step_save=10000, step_log=100, step_training_log=20):
         if not self.built:
             self._build()
-        opts = tf.ConfigProto(allow_soft_placement=True,
-                              log_device_placement=True)
+        opts = tf.ConfigProto(allow_soft_placement=True)
         init_op = tf.global_variables_initializer()
         saver = tf.train.Saver()
         with tf.Session(config=opts, graph=self.graph) as sess:

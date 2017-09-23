@@ -81,6 +81,7 @@ def to_images_labels(data_lines, folder):
         image_path, label = datum.split(" ", 1)
         img = imread(os.path.join(folder, image_path), mode="RGB")
         img = img - np.mean(img)
+        img = img / 255
         label = int(label)
         images.append(img)
         labels.append(label)
