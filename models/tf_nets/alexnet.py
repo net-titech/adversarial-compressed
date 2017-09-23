@@ -174,7 +174,8 @@ class AlexNet:
                 saver.restore(sess, continue_from)
             else:
                 sess.run(tf.global_variables_initializer())
-            writer = tf.summary.FileWriter("./logs", sess.graph)
+            writer_train = tf.summary.FileWriter("./logs/train", sess.graph)
+            writer_val = tf.summary.FileWriter("./logs/val", sess.graph)
             images_labels = data_gen(self.batch_size, "train")
             val_images_labels = data_gen(self.batch_size, "val")
             # Generate data and training
@@ -192,19 +193,25 @@ class AlexNet:
                             format(gl_step, acc1, acc5))
                         # Validation accuracies
                         val_images, val_labels = next(val_images_labels)
-                        acc1, acc5 = sess.run([self.acc1, self.acc5], feed_dict={
-                            self.input: val_images, self.labels: val_labels, 
-                            self.training: False})
+                        acc1, acc5, s = sess.run([self.acc1, self.acc5, 
+                                                  self.summary_ops], 
+                                                 feed_dict={self.input: val_images, 
+                                                           self.labels: val_labels, 
+                                                         self.training: False})
+                        writer_val.add_summary(s, global_step=gl_step)
                         print("Step {}, validation accuracy: {} (top 1), {} (top 5)".\
                             format(gl_step, acc1, acc5))
                     # Training
-                    _, s, gl_step, bloss = sess.run([self.train_op, self.summary_ops, 	
-                        self.global_step, self.loss], feed_dict={self.input: images,
-                        self.labels: labels, self.training: True})
-                    writer.add_summary(s, global_step=gl_step)
+                    _, s, gl_step, bloss, lr = sess.run(
+                        [self.train_op, self.summary_ops, self.global_step, 
+                         self.loss, self.optimizer._learning_rate_tensor], 
+                        feed_dict={self.input: images,
+                                   self.labels: labels, 
+                                   self.training: True})
+                    writer_train.add_summary(s, global_step=gl_step)
                     if gl_step % step_training_log == 0:
-                        log_training(gl_step, bloss)
-                    if (gl_step+1) % step_save == 0:
+                        log_training(gl_step, bloss, lr)
+                    if gl_step % step_save == 0 and gl_step > 0:
                         print("Saving checkpoint...")
                         saver.save(sess, "./checkpoints/{}".format(self.name),
                                    global_step = gl_step)
@@ -214,7 +221,7 @@ class AlexNetVD(AlexNet):
     AlexNet with Variational Dropout
     Paper: (Kingma, 2015)
     """
-    def __init__(self, init_alpha=0.99, **kwargs):
+    def __init__(self, init_alpha=0.5, **kwargs):
         super().__init__(**kwargs)
         self.init_alpha = init_alpha
         self.name="AlexNetVD"

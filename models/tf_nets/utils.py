@@ -2,14 +2,14 @@ import time
 
 start = 0
 
-def log_training(step, bloss):
+def log_training(step, bloss, lr):
     global start
     if start == 0:
         start = time.time()
-        print("|\tStart| Step {}: batch loss: {}".format(step, bloss))
+        print("|Start| Step {}: batch loss: {} learning rate: {}".format(step, bloss, lr))
     else:
         elapsed = time.time() - start
-        print("|\t{0:5.2f}(sec)| Step {1}: batch loss: {2}".format(elapsed, step, bloss))
+        print("|{0:5.2f}(sec)| Step {1}: batch loss: {2} learning rate {3}".format(elapsed, step, bloss, lr))
 
 def convert_data_format(data_format, ndim):
     """Copy from tensorflow/tensorflow/python/layers/utils.py"""
