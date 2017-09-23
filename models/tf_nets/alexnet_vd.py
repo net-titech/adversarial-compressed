@@ -6,11 +6,14 @@ class AlexNetVD(AlexNet):
     AlexNet with Variational Dropout
     Paper: (Kingma, 2015)
     """
-    def __init__(self, init_alpha=0.5, **kwargs):
+    def __init__(self, init_alpha=0.5, num_samples=1281167,
+                 regularization_weight=1.0, **kwargs):
         super().__init__(**kwargs)
         self.init_alpha = init_alpha
         self.name="AlexNetVD"
-        
+        self.regularization_weight = regularization_weight
+        self.num_samples = num_samples
+    
     def _create_net(self):
         with tf.name_scope("convolution_group"):
             # conv1 11x11x96
@@ -78,7 +81,9 @@ class AlexNetVD(AlexNet):
             self.acc1 = tf.reduce_mean(acc_top1)
             self.acc5 = tf.reduce_mean(acc_top5)
 
-    def _create_loss(self, num_samples, rw=1.0):
+    def _create_loss(self):
+        num_samples = self.num_samples
+        rw = self.regularization_weight
         with tf.name_scope("loss"):
             onehot_labels = tf.one_hot(indices=self.labels,
                                        depth=self.num_classes)
@@ -86,3 +91,5 @@ class AlexNetVD(AlexNet):
                                                                  self.logits))
             vd_reg = tf.reduce_sum([vd_reg(l.get_alpha()) for l in self.vd_layers])
             self.loss = -((num_samples * 1.0 / self.batch_size)*ell - rw * vd_reg)
+
+
