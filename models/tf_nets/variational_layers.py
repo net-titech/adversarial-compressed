@@ -1,5 +1,91 @@
 import tensorflow as tf
 from tensorflow.contrib.keras import layers
+from tensorflow import nn
+from utils import convert_data_format
+
+class ConvVarDrop(layers.Conv2D):
+    """Variational Dropout for convolutional layer
+    (Kingma, 2015)
+    """
+    def __init__(self,
+                 init_alpha=1.0,
+                 alpha_reg=None,
+                 use_alpha_bias=False,
+                 name="VarDropConv",
+                 **kwargs):
+        super(ConvVarDrop, self).__init__(**kwargs)
+        self.init_alpha = init_alpha
+        self.alpha_reg = alpha_reg
+        self.use_alpha_bias = use_alpha_bias
+        self.name = name
+
+    def build(self, input_shape):
+        input_shape = tf.TensorShape(input_shape)
+        if self.data_format == "channels_first":
+            channel_axis = 1
+        else:
+            channel_axis = -1
+        if input_shape[channel_axis].value is None:
+            raise ValueError("The channel dimension of the inputs "
+                             "should be defined. Found `None`.")
+        input_dim = input_shape[channel_axis].value
+        kernel_shape = self.kernel_size + (input_dim, self.filters)
+        self.log_alpha = self.add_variable(name="log_alpha",
+                                           shape=None,
+                                           initializer=tf.fill(kernel_shape, 
+                                                               tf.log(self.init_alpha)),
+                                           regularizer=self.alpha_reg,
+                                           dtype=self.dtype,
+                                           trainable=True) 
+        if self.use_alpha_bias:
+            print("Not implemented. Does it make sense?")
+        super(ConvVarDrop, self).build(input_shape)
+
+    def call(self, inputs, training):
+        def conv_var_drop():
+            input2 = tf.multiply(inputs,inputs)
+            alpha = tf.clip_by_value(tf.exp(self.log_alpha), 0, 1)
+            # Convolution with reparameterization trick
+            theta = nn.convolution(input=inputs,
+                         filter=self.kernel,
+                         dilation_rate=self.dilation_rate,
+                         strides=self.strides,
+                         padding=self.padding.upper(),
+                         data_format=convert_data_format(self.data_format, self.rank+2))
+            sigma = tf.sqrt(nn.convolution(input=input2,
+                                 filter=alpha*self.kernel*self.kernel,
+                                 dilation_rate=self.dilation_rate,
+                                 strides=self.strides,
+                                 padding=self.padding.upper(),
+                                 data_format=convert_data_format(self.data_format, self.rank+2)))
+            noise = tf.random_normal(shape=theta.shape.as_list())
+            outputs = theta + noise * sigma
+            # bias
+            if self.bias is not None:
+                if self.data_format == "channels_first":
+                    if self.rank == 1:
+                        bias = tf.reshape(self.bias, (1, self.filters, 1))
+                        outputs += bias
+                    if self.rank == 2:
+                        outputs = tf.nn.bias_add(outputs, self.bias, data_format="NCHW")
+                    if self.rank == 3:
+                        outputs_shape = outputs.shape.as_list()
+                        outputs_4d = tf.reshape(outputs,
+                                                [outputs_shape[0], outputs_shape[1],
+                                                 outputs_shape[2] * outputs_shape[3],
+                                                 otuputs_shape[4]])
+                        outputs_4d = tf.nn.bias_add(outputs_4d, self.bias, data_format="NCHW")
+                        outputs = tf.reshape(outputs_4d, outputs_shape)
+                else:
+                    outputs = tf.nn.bias_add(outputs, self.bias, data_format="NHWC")
+            # Activation
+            if self.activation is not None:
+                return self.activation(outputs)
+            return outputs
+        return tf.cond(training, conv_var_drop, lambda: super(ConvVarDrop, self).call(inputs))
+
+    def get_alpha(self):
+        return tf.exp(self.log_alpha)
 
 class DenseVarDrop(layers.Dense):
     """Variational Dropout for fully connected layer
@@ -10,11 +96,13 @@ class DenseVarDrop(layers.Dense):
                  init_alpha=1.0, 
                  alpha_reg=None, 
                  use_alpha_bias=False,
+                 name="VarDropDense",
                  **kwargs):
         super().__init__(**kwargs)
         self.init_alpha = init_alpha
         self.alpha_reg = alpha_reg 
         self.use_alpha_bias = use_alpha_bias
+        self.name = name
 
     def build(self, input_shape, dropout_mode="weights"):
         # TODO: Implement weights and units dropout modes
@@ -36,6 +124,10 @@ class DenseVarDrop(layers.Dense):
         else:
             self.alpha_bias = None
         super(DenseVarDrop, self).build(input_shape)
+
+    def get_alpha(self):
+        #TODO: Alpha bias?
+        return tf.exp(self.log_alpha)
 
     def call(self, inputs, training):
         def vd_dropout():
@@ -92,10 +184,23 @@ def denseVD(
     init_alpha=1.0,
     alpha_reg=False,
     use_alpha_bias=False,
+    name="VarDropDense",
     **kwargs):
     layer = DenseVarDrop(init_alpha, alpha_reg,
-                                    use_alpha_bias, **kwargs)
-    return layer.apply(inputs, training=training)
+                         use_alpha_bias, **kwargs)
+    return layer.apply(inputs, training=training), layer
+
+def convVD(
+    inputs,
+    training,
+    init_alpha=1.0,
+    alpha_reg=False,
+    use_alpha_bias=False,
+    name="VarDropConv",
+    **kwargs):
+    layer = ConvVarDrop(init_alpha, alpha_reg,
+                        use_alpha_bias, **kwargs)
+    return layer.apply(inputs, training=training), layer
 
 def vd_reg(alpha, constant=0.5):
     """Compute DK divergece between approximate
@@ -106,5 +211,7 @@ def vd_reg(alpha, constant=0.5):
     c1 = 1.16145124
     c2 = -1.50204118
     c3 = 0.58629921
-    return constant + 0.5*tf.log(alpha) + tf.multiply(c1,alpha) +\
-           tf.multiply(c2,tf.pow(alpha,2)) + tf.multiply(c3,tf.pow(alpha,3))
+    return -tf.reduce_sum(constant + 0.5*tf.log(alpha) +\
+                          tf.multiply(c1,alpha) +\
+                          tf.multiply(c2,tf.pow(alpha,2)) +\
+                          tf.multiply(c3,tf.pow(alpha,3)))
