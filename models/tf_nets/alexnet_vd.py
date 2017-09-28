@@ -7,7 +7,7 @@ class AlexNetVD(AlexNet):
     AlexNet with Variational Dropout
     Paper: (Kingma, 2015)
     """
-    def __init__(self, init_alpha=0.5, num_samples=1281167,
+    def __init__(self, init_alpha=0.01, num_samples=1281167,
                  regularization_weight=1.0, **kwargs):
         super().__init__(**kwargs)
         self.init_alpha = init_alpha
@@ -59,12 +59,15 @@ class AlexNetVD(AlexNet):
             # fc6 4096 units with variational dropout
             flat5 = tf.contrib.layers.flatten(maxpool5)
             fc6, lvdfc6 = denseVD(inputs=flat5, units=4096, training=self.training,
-                          activation=tf.nn.relu, name="vdfc6")
+                                  init_alpha=self.init_alpha,
+                                  activation=tf.nn.relu, name="vdfc6")
             # fc7 4096 units with variational dropout
             fc7, lvdfc7 = denseVD(inputs=fc6, units=4096, training=self.training,
-                                    activation=tf.nn.relu, name="vdfc7")
+                                  init_alpha=self.init_alpha,
+                                  activation=tf.nn.relu, name="vdfc7")
             # fc8 is also logits with variational dropout
             self.logits, lvdfc8 = denseVD(inputs=fc7, training=self.training,
+                                          init_alpha=self.init_alpha,
                                           units=self.num_classes, name="vdfc8")
         
         self.vd_layers = [lvdfc6, lvdfc7, lvdfc8]
@@ -82,15 +85,27 @@ class AlexNetVD(AlexNet):
             self.acc1 = tf.reduce_mean(acc_top1)
             self.acc5 = tf.reduce_mean(acc_top5)
 
+    def _create_optimizer(self):
+        # Global step for learning rate deca
+        self.global_step = tf.Variable(0, dtype=tf.int32, trainable=False,
+                                       name="global_step")
+        with tf.name_scope("trainer"):
+            lr = tf.train.exponential_decay(self.lr, self.global_step,
+                                            self.lr_decay_step, self.gamma)
+            self.optimizer = tf.train.GradientDescentOptimizer(lr)
+            self.train_op = self.optimizer.minimize(self.loss, 
+                                                    global_step=self.global_step) 
+
     def _create_loss(self):
+        # TODO: This is not the actual loss proposed in the paper
+        # Loss becomes NaN if multiply with a number greater than 100
         num_samples = self.num_samples
-        rw = self.regularization_weight
+        rw = self.regularization_weight * 1.0 / num_samples
         with tf.name_scope("loss"):
             onehot_labels = tf.one_hot(indices=self.labels,
                                        depth=self.num_classes)
-            ell = -tf.reduce_sum(tf.losses.softmax_cross_entropy(onehot_labels,
-                                                                 self.logits))
-            reg = tf.reduce_sum([vd_reg(l.get_alpha()) for l in self.vd_layers])
-            self.loss = -((num_samples * 1.0 / self.batch_size)*ell - rw * reg)
-
-
+            # Internally compute reduce mean
+            mean_xent = tf.losses.softmax_cross_entropy(onehot_labels,
+                                                        self.logits)
+            reg = tf.reduce_sum([vd_reg(l.alpha) for l in self.vd_layers])
+            self.loss = mean_xent + rw * reg
