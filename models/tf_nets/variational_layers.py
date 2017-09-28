@@ -3,6 +3,8 @@ from tensorflow.contrib.keras import layers
 from tensorflow import nn
 from utils import convert_data_format
 
+eps = 1e-8
+
 class ConvVarDrop(layers.Conv2D):
     """Variational Dropout for convolutional layer
     (Kingma, 2015)
@@ -30,13 +32,13 @@ class ConvVarDrop(layers.Conv2D):
                              "should be defined. Found `None`.")
         input_dim = input_shape[channel_axis].value
         kernel_shape = self.kernel_size + (input_dim, self.filters)
-        self.log_alpha = self.add_variable(name="log_alpha",
-                                           shape=None,
-                                           initializer=tf.fill(kernel_shape, 
-                                                               tf.log(self.init_alpha)),
-                                           regularizer=self.alpha_reg,
-                                           dtype=self.dtype,
-                                           trainable=True) 
+        self.alpha = self.add_variable(name="alpha",
+                                       shape=None,
+                                       initializer=tf.fill(kernel_shape, 
+                                                           self.init_alpha),
+                                       regularizer=self.alpha_reg,
+                                       dtype=self.dtype,
+                                       trainable=True) 
         if self.use_alpha_bias:
             print("Not implemented. Does it make sense?")
         super(ConvVarDrop, self).build(input_shape)
@@ -44,7 +46,7 @@ class ConvVarDrop(layers.Conv2D):
     def call(self, inputs, training):
         def conv_var_drop():
             input2 = tf.multiply(inputs,inputs)
-            alpha = tf.clip_by_value(tf.exp(self.log_alpha), 0, 1)
+            alpha = tf.clip_by_value(self.alpha, 0, 1)
             # Convolution with reparameterization trick
             theta = nn.convolution(input=inputs,
                          filter=self.kernel,
@@ -52,7 +54,7 @@ class ConvVarDrop(layers.Conv2D):
                          strides=self.strides,
                          padding=self.padding.upper(),
                          data_format=convert_data_format(self.data_format, self.rank+2))
-            sigma = tf.sqrt(nn.convolution(input=input2,
+            sigma = tf.sqrt(eps+nn.convolution(input=input2,
                                  filter=alpha*self.kernel*self.kernel,
                                  dilation_rate=self.dilation_rate,
                                  strides=self.strides,
@@ -84,9 +86,6 @@ class ConvVarDrop(layers.Conv2D):
             return outputs
         return tf.cond(training, conv_var_drop, lambda: super(ConvVarDrop, self).call(inputs))
 
-    def get_alpha(self):
-        return tf.exp(self.log_alpha)
-
 class DenseVarDrop(layers.Dense):
     """Variational Dropout for fully connected layer
     Paper: Variational Dropout and the Local Reparameterization Trick
@@ -107,10 +106,10 @@ class DenseVarDrop(layers.Dense):
     def build(self, input_shape, dropout_mode="weights"):
         # TODO: Implement weights and units dropout modes
         input_shape = tf.TensorShape(input_shape)
-        self.log_alpha = self.add_variable("log_alpha", 
+        self.alpha = self.add_variable("alpha", 
                             shape=None,
                             initializer=tf.fill([input_shape[-1].value, self.units], 
-                                                tf.log(self.init_alpha)),
+                                                self.init_alpha),
                             regularizer=self.alpha_reg,
                             dtype=self.dtype,
                             trainable=True)
@@ -125,10 +124,6 @@ class DenseVarDrop(layers.Dense):
             self.alpha_bias = None
         super(DenseVarDrop, self).build(input_shape)
 
-    def get_alpha(self):
-        #TODO: Alpha bias?
-        return tf.exp(self.log_alpha)
-
     def call(self, inputs, training):
         def vd_dropout():
             # Variational Dropout
@@ -138,18 +133,18 @@ class DenseVarDrop(layers.Dense):
             kernel_sq = self.kernel * self.kernel
             # Local reparameterization trick
             noise = tf.random_normal(shape=output_shape)
-            alpha = tf.clip_by_value(tf.exp(self.log_alpha), 0, 1)
+            alpha = tf.clip_by_value(self.alpha, 0, 1)
             if len(output_shape) > 2:
                 # Broadcasting is required for the inputs
                 mean = tf.tensordot(tinputs, self.kernel, [[len(shape)-1], [0]])
-                var = tf.sqrt(tf.tensordot(tinputs * tinputs, 
-                                           alpha * kernel_sq))
+                var = tf.sqrt(eps+tf.tensordot(tinputs * tinputs, 
+                                               alpha * kernel_sq))
                 outputs = mean + noise * var
                 # Reshape the output back to the org ndim
                 outputs.set_shape(output_shape)
             else:
                 mean = tf.matmul(tinputs, self.kernel)
-                var = tf.sqrt(tf.matmul(inputs*inputs,
+                var = tf.sqrt(eps+tf.matmul(inputs*inputs,
                                         alpha * kernel_sq))
                 outputs = mean + noise * var
             # TODO: Think about the use of alpha bias
@@ -202,7 +197,7 @@ def convVD(
                         use_alpha_bias, **kwargs)
     return layer.apply(inputs, training=training), layer
 
-def vd_reg(alpha, constant=0.5):
+def vd_reg(alpha, constant=0.5, clip=True, max_val=1.0, min_val=eps):
     """Compute DK divergece between approximate
     posterior and the prior. This term is refered 
     as a regularization term prefering the posterior
@@ -211,6 +206,8 @@ def vd_reg(alpha, constant=0.5):
     c1 = 1.16145124
     c2 = -1.50204118
     c3 = 0.58629921
+    if clip:
+        alpha = tf.clip_by_value(alpha, min_val, max_val)
     return -tf.reduce_sum(constant + 0.5*tf.log(alpha) +\
                           tf.multiply(c1,alpha) +\
                           tf.multiply(c2,tf.pow(alpha,2)) +\
