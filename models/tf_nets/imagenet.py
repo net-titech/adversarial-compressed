@@ -6,9 +6,9 @@ from scipy.misc import imread
 
 rseed = 69
 
-# On TitanX sever. Data is converted to 227x227
+# On GTX1080 sever. Data is converted to 227x227
 
-DATALOC = "/mnt/data/imagenet"
+DATALOC = "/mnt/imagenet"
 TRAIN_LOC = "train"
 VAL_LOC = "val"
 TRAIN_FILE = "train.txt"
