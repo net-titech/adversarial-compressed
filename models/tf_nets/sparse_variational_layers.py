@@ -212,7 +212,7 @@ class DenseSpVarDrop(layers.Dense):
         # Switch between training and testing        
         return tf.cond(training, vd_dropout, mul_dense)
 
-def denseVD(
+def denseSpVD(
     inputs,
     training,
     init_alpha=1.0,
@@ -224,7 +224,7 @@ def denseVD(
                          use_alpha_bias, **kwargs)
     return layer.apply(inputs, training=training), layer
 
-def convVD(
+def convSpVD(
     inputs,
     training,
     init_alpha=1.0,
