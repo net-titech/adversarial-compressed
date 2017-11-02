@@ -41,20 +41,20 @@ class AlexNet:
         with tf.name_scope("convolution_group"):
             # conv1 11x11x96
             conv1 = tf.layers.conv2d(inputs=self.input, filters=96,
-                        kernel_size=11, strides=4, padding='same', 
+                        kernel_size=11, strides=4, padding='valid', 
                         activation=tf.nn.relu, name="conv1")
-            lrn1 = tf.nn.lrn(input=conv1, depth_radius=5, alpha=0.0001, 
-                             beta=0.75, name="lrn1")
-            maxpool1 = tf.layers.max_pooling2d(inputs=lrn1, pool_size=3,
+            #lrn1 = tf.nn.lrn(input=conv1, depth_radius=5, alpha=0.0001, 
+            #                 beta=0.75, name="lrn1")
+            maxpool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=3,
                                                strides=2, padding="valid",
                                                name="maxpool1")
             # conv2 5x5x256
             conv2 = tf.layers.conv2d(inputs=maxpool1, filters=256,
                         kernel_size=5, strides=1, padding='same', 
                         activation=tf.nn.relu, name="conv2")
-            lrn2 = tf.nn.lrn(input=conv2, depth_radius=5, alpha=0.0001, 
-                             beta=0.75, name="lrn1")
-            maxpool2 = tf.layers.max_pooling2d(inputs=lrn2, pool_size=3,
+            #lrn2 = tf.nn.lrn(input=conv2, depth_radius=5, alpha=0.0001, 
+            #                 beta=0.75, name="lrn1")
+            maxpool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=3,
                                                strides=2, padding="valid",
                                                name="maxpool2")
             # conv3 3x3x384
@@ -214,14 +214,4 @@ class AlexNet:
                         saver.save(sess, "./checkpoints/{}".format(self.name),
                                    global_step = gl_step)
                    
-
-class AlexNetSVD(AlexNet):
-    """
-    AlexNet with Sparse Variational Dropout
-    Paper: (Molchanov, 2017)
-    """
-    def __init__(self, log_alpha, log_sigma, **kwargs):
-        super().__init__(**kwargs)
-        self.log_alpha = log_alpha
-        self.log_sigma = log_sigma
 
