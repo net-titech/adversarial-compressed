@@ -6,6 +6,18 @@ def caffe_inv_decay(learning_rate, global_step, decay_step,
     """
         Impement learning policy 'inv' used in Caffe:
         lr = base_lr * (1 + gamma * iter) ^ (-power)
+        Test:
+            import tensorflow as tf
+            gs = tf.Variable(0, trainable=False)
+            lr = caffe_inv_decay(base_lr, gs, 1, 1e-5, 0.75)
+            sess = tf.Session()
+            sess.run(tf.global_variable_intializer())
+            sess.run(lr)
+                0.0099998
+            sess.run(tf.assign(gl, 20000))
+                20000
+            sess.run(lr)
+                0.0087219598
     """
     if global_step is None:
         raise ValueError("global_step is required.")
