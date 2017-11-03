@@ -75,8 +75,8 @@ def load_mnist(loc='/mnt/mnist', one_hot=True, dtype=dtypes.float32,
     train_x, train_y, test_x, test_y = read_mnist(loc)
     assert 0 <= val_size <= len(train_x), "Invalid validation size!"
     if one_hot:
-        train_y = dense_to_onehot(train_y)
-        test_y = dense_to_onehot(test_y)
+        train_y = dense_to_onehot(train_y, 10)
+        test_y = dense_to_onehot(test_y, 10)
     val_x = train_x[:val_size]
     val_y = train_y[:val_size]
     train_x = train_x[val_size:]
