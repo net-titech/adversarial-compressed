@@ -87,3 +87,10 @@ def load_mnist(loc='/mnt/mnist', one_hot=True, dtype=dtypes.float32,
     test = Dataset(test_x, test_y, **options)
     return DSS(train=train, val=val, test=test)
 
+def pretty_print(img):
+    # Util to quickly see img on console
+    s = ""
+    for row in img:
+        s += "".join([str(pixel).zfill(3) for pixel in row])
+        s += '\n'
+    print(s)
