@@ -2,6 +2,9 @@
 testing. Original implementation at: https://goo.gl/Yhq5kA"""
 
 import numpy as np
+from tensorflow.contrib.learn.python.learn.datasets import base
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
 from collections import namedtuple
 
 DSS = namedtuple('Datasets', ['train', 'val', 'test'])
@@ -16,7 +19,7 @@ class Dataset(object):
                reshape=True,
                seed=None):
         seed1, seed2 = random_seed.get_seed(seed)
-        numpy.random.seed(seed1 if seed is None else seed2)
+        np.random.seed(seed1 if seed is None else seed2)
         dtype = dtypes.as_dtype(dtype).base_dtype
         if dtype not in (dtypes.uint8, dtypes.float32):
             raise TypeError('Invalid image dtype %r, expected\
@@ -35,8 +38,8 @@ class Dataset(object):
                                     images.shape[1] * images.shape[2])
         if dtype == dtypes.float32:
             # Convert from [0, 255] -> [0.0, 1.0].
-            images = images.astype(numpy.float32)
-            images = numpy.multiply(images, 1.0 / 255.0)
+            images = images.astype(np.float32)
+            images = np.multiply(images, 1.0 / 255.0)
 
         self._images = images
         self._labels = labels
@@ -71,8 +74,8 @@ class Dataset(object):
         start = self._index_in_epoch
         # Shuffle for the first epoch
         if self._epochs_completed == 0 and start == 0 and shuffle:
-            perm0 = numpy.arange(self._num_examples)
-            numpy.random.shuffle(perm0)
+            perm0 = np.arange(self._num_examples)
+            np.random.shuffle(perm0)
             self._images = self.images[perm0]
             self._labels = self.labels[perm0]
         # Go to the next epoch
@@ -85,8 +88,8 @@ class Dataset(object):
             labels_rest_part = self._labels[start:self._num_examples]
             # Shuffle the data
             if shuffle:
-                perm = numpy.arange(self._num_examples)
-                numpy.random.shuffle(perm)
+                perm = np.arange(self._num_examples)
+                np.random.shuffle(perm)
                 self._images = self.images[perm]
                 self._labels = self.labels[perm]
             # Start next epoch
@@ -95,9 +98,10 @@ class Dataset(object):
             end = self._index_in_epoch
             images_new_part = self._images[start:end]
             labels_new_part = self._labels[start:end]
-            return numpy.concatenate((images_rest_part, images_new_part), axis=0) , numpy.concatenate((labels_rest_part, labels_new_part), axis=0)
+            return np.concatenate((images_rest_part, images_new_part), axis=0) , np.concatenate((labels_rest_part, labels_new_part), axis=0)
         else:
             self._index_in_epoch += batch_size
             end = self._index_in_epoch
             return self._images[start:end], self._labels[start:end]
+
 

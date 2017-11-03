@@ -1,5 +1,6 @@
 import numpy as np
 from dataset import Dataset, DSS
+from tensorflow.python.framework import dtypes
 import os
 
 mnist_files = ['train-images-idx3-ubyte',
@@ -16,12 +17,12 @@ label_header_type = np.dtype([('magic', '>i4'),
 img_type = np.dtype('(28,28)B')
 label_type = np.dtype('B')
 
-def dense_to_one_hot(labels_dense, num_classes):
+def dense_to_onehot(labels_dense, num_classes):
     num_labels = labels_dense.shape[0]
     index_offset = np.arange(num_labels) * num_classes
-    labels_one_hot = np.zeros((num_labels, num_classes))
-    labels_one_hot.flat[index_offset + labels_dense.ravel()] = 1
-    return labels_one_hot
+    labels_onehot = np.zeros((num_labels, num_classes))
+    labels_onehot.flat[index_offset + labels_dense.ravel()] = 1
+    return labels_onehot
 
 def extract_images(fobject):
     header = np.fromfile(fobject, dtype=img_header_type, count=1)
@@ -31,8 +32,9 @@ def extract_images(fobject):
 def extract_labels(fobject, one_hot=True, num_classes=10):
     header = np.fromfile(fobject, dtype=label_header_type, count=1)
     labels = np.fromfile(fobject, dtype=label_type)
+    if one_hot:
+        lables = dense_to_onehot(labels, num_classes)
     return header, labels
-
 
 def read_mnist(loc='/mnt/mnist'):
     for file_name in mnist_files:
@@ -56,7 +58,7 @@ def read_mnist(loc='/mnt/mnist'):
         assert train_lheader['num_items'] == 60000
     # Read testing images
     with open(test_imgs_f, 'rb') as f:
-        train_iheader, train_imgs = extract_images(f)
+        test_iheader, test_imgs = extract_images(f)
         assert test_iheader['magic'] == 2051
         assert test_iheader['num_images'] == 10000
         assert test_iheader['rows'] == 28
@@ -66,17 +68,22 @@ def read_mnist(loc='/mnt/mnist'):
         test_lheader, test_labels = extract_labels(f)
         assert test_lheader['magic'] == 2049
         assert test_lheader['num_items'] == 10000
+    return train_imgs, train_labels, test_imgs, test_labels
 
+def load_mnist(loc='/mnt/mnist', one_hot=True, dtype=dtypes.float32,
+               val_size=5000, reshape=True):
+    train_x, train_y, test_x, test_y = read_mnist(loc)
+    assert 0 <= val_size <= len(train_x), "Invalid validation size!"
+    if one_hot:
+        train_y = dense_to_onehot(train_y)
+        test_y = dense_to_onehot(test_y)
+    val_x = train_x[:val_size]
+    val_y = train_y[:val_size]
+    train_x = train_x[val_size:]
+    train_y = train_y[val_size:]
+    options = dict(dtype=dtype, reshape=reshape)
+    train = Dataset(train_x, train_y, **options)
+    val = Dataset(val_x, val_y, **options)
+    test = Dataset(test_x, test_y, **options)
+    return DSS(train=train, val=val, test=test)
 
-
-
-    def __init__(self, loc='/mnt/mnist'):
-        for file_name in mnist_files:
-            error_msg = file_name + " not found!"
-    	    assert os.path.exists(loc+file_name), error_msg
-        self.train_imgs = loc + mnist_files[0]
-        self.train_labels = loc + mnist_files[1]
-        self.test_imgs = loc + mnist_files[2]
-        self.test_labels = loc + mnist_files[3]
-
-     
