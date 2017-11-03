@@ -24,9 +24,9 @@ class Dataset(object):
         if dtype not in (dtypes.uint8, dtypes.float32):
             raise TypeError('Invalid image dtype %r, expected\
                               uint8 or float32' % dtype)
+        self.one_hot = one_hot
         if fake_data:
             self._num_examples = 10000
-            self.one_hot = one_hot
         else:
             assert images.shape[0] == labels.shape[0], (
           'images.shape: %s labels.shape: %s' % (images.shape, labels.shape))
@@ -65,12 +65,12 @@ class Dataset(object):
     def next_batch(self, batch_size, fake_data=False, shuffle=True):
         if fake_data:
             fake_image = [1] * 784
-        if self.one_hot:
-            fake_label = [1] + [0] * 9
-        else:
-            fake_label = 0
-        return [fake_image for _ in range(batch_size)], [
-            fake_label for _ in range(batch_size)]
+            if self.one_hot:
+                fake_label = [1] + [0] * 9
+            else:
+                fake_label = 0
+            return [fake_image for _ in range(batch_size)], [
+                    fake_label for _ in range(batch_size)]
         start = self._index_in_epoch
         # Shuffle for the first epoch
         if self._epochs_completed == 0 and start == 0 and shuffle:
