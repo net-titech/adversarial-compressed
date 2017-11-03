@@ -14,7 +14,7 @@ img_header_type = np.dtype([('magic', '>i4'),
                             ('cols', '>i4')])
 label_header_type = np.dtype([('magic', '>i4'),
                               ('num_items', '>i4')])
-img_type = np.dtype('(28,28)B')
+img_type = np.dtype('(28,28,1)B') # row, col, depth
 label_type = np.dtype('B')
 
 def dense_to_onehot(labels_dense, num_classes):
