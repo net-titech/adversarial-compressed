@@ -1,5 +1,8 @@
 import tensorflow as tf
 from utils import log_training
+from collections import namedtuple
+
+Preds = namedtuple("Predictions", ["label", "prob"])
 
 def caffe_inv_decay(learning_rate, global_step, decay_step,
                     gamma, power, name=None):
@@ -38,23 +41,23 @@ def caffe_inv_decay(learning_rate, global_step, decay_step,
 
 class LeNet(object):
     """
-    BLVC LeNet (modified version)
-    URL: https://goo.gl/ezxzvj
+        BLVC LeNet (modified version w.o. learning rate mult)
+        URL: https://goo.gl/ezxzvj
     """
     def __init__(self, train_batch_size=64,
+                 test_batch_size=100, val_size=5000,
                  image_size=28, image_channels=1,
                  num_classes=10, init_lr=0.01,
-                 momentum=0.9,
-                 gamma=0.1, l2_scale=0.001, name="AlexNet", summary_dir="./"):
-        self.batch_size = batch_size
+                 momentum=0.9, gamma=1e-5,
+                 power=0.75, l2_scale=5e-4,
+                 name="LeNet", summary_dir="./"):
+        self.batch_size = train_batch_size
         self.image_size = image_size
         self.image_channels = image_channels
         self.num_classes = num_classes
         self.lr = init_lr
-        # TODO: Decay by stagnation of loss or accuracies
-        # TODO: Implement early stopping
-        self.lr_decay_step = stepsize
         self.gamma = gamma # lr decay factor
+        self.power = power # inv learning policy param
         self.sum_dir = summary_dir
         self.built = False
         self.l2_scale = l2_scale
@@ -75,66 +78,33 @@ class LeNet(object):
 
     def _create_net(self):
         with tf.name_scope("convolution_group"):
-            # conv1 11x11x96
-            conv1 = tf.layers.conv2d(inputs=self.input, filters=96,
-                        kernel_size=11, strides=4, padding='valid',
-                        activation=tf.nn.relu, name="conv1")
-            #lrn1 = tf.nn.lrn(input=conv1, depth_radius=5, alpha=0.0001,
-            #                 beta=0.75, name="lrn1")
-            maxpool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=3,
+            # conv1 5x5x20
+            conv1 = tf.layers.conv2d(inputs=self.input, filters=20, kernel_size=5,
+                                     strides=1, padding="valid", name="conv1")
+            maxpool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=2,
                                                strides=2, padding="valid",
                                                name="maxpool1")
-            # conv2 5x5x256
-            conv2 = tf.layers.conv2d(inputs=maxpool1, filters=256,
-                        kernel_size=5, strides=1, padding='same',
-                        activation=tf.nn.relu, name="conv2")
-            #lrn2 = tf.nn.lrn(input=conv2, depth_radius=5, alpha=0.0001,
-            #                 beta=0.75, name="lrn1")
-            maxpool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=3,
+            # conv2 5x5x50
+            conv2 = tf.layers.conv2d(inputs=maxpool1, filters=50, kernel_size=5,
+                                     strides=1, padding="valid", name="conv2")
+            maxpool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=2,
                                                strides=2, padding="valid",
                                                name="maxpool2")
-            # conv3 3x3x384
-            conv3 = tf.layers.conv2d(inputs=maxpool2, filters=384,
-                        kernel_size=3, strides=1, padding="same",
-                        activation=tf.nn.relu, name="conv3")
-            # conv4 3x3x384
-            conv4 = tf.layers.conv2d(inputs=conv3, filters=384,
-                        kernel_size=3, strides=1, padding="same",
-                        activation=tf.nn.relu, name="conv4")
-            # conv5 3x3x256
-            conv5 = tf.layers.conv2d(inputs=conv4, filters=256,
-                        kernel_size=3, strides=1, padding="same",
-                        activation=tf.nn.relu, name="conv5")
-            maxpool5 = tf.layers.max_pooling2d(inputs=conv5, pool_size=3,
-                                               strides=2, padding="valid",
-                                               name="maxpool5")
         with tf.name_scope("fully_connected_group"):
-            # fc6 4096 units
-            flat5 = tf.contrib.layers.flatten(maxpool5)
-            fc6 = tf.layers.dense(inputs=flat5, units=4096,
-                    activation=tf.nn.relu, name="fc6")
-            dropout6 = tf.layers.dropout(inputs=fc6, rate=0.5,
-                                         training=self.training,
-                                         name="dropout6")
-            fc7 = tf.layers.dense(inputs=dropout6, units=4096,
-                    activation=tf.nn.relu, name="fc7")
-            dropout7 = tf.layers.dropout(inputs=fc7, rate=0.5,
-                                         training=self.training,
-                                         name="dropout7")
-            self.logits = tf.layers.dense(inputs=dropout7,
-                            units=self.num_classes, name="fc8")
+            # fc1 500 units
+            flat = tf.contrib.layers.flatten(maxpool2)
+            fc1 = tf.layers.dense(inputs=flat, units=500,
+                                  activation=tf.nn.relu, name="fc1")
+            fc2 = tf.layers.dense(inputs=fc1, units=10,
+                    activation=tf.nn.relu, name="fc2")
+            self.logits = fc2
         with tf.name_scope("output"):
-            self.predictions = {
-                "class": tf.argmax(input=self.logits, axis=1),
-                "probs": tf.nn.softmax(self.logits, name="softmax")
-            }
+            self.predictions = Preds(label=tf.argmax(input=self.logits, axis=1),
+                                   prob=tf.nn.softmax(self.logits, name="softmax"))
         with tf.name_scope("accuracy"):
             acc_top1 = tf.nn.in_top_k(self.logits, self.labels, 1)
-            acc_top5 = tf.nn.in_top_k(self.logits, self.labels, 5)
             acc_top1 = tf.cast(acc_top1, tf.float32)
-            acc_top5 = tf.cast(acc_top5, tf.float32)
             self.acc1 = tf.reduce_mean(acc_top1)
-            self.acc5 = tf.reduce_mean(acc_top5)
 
     def _create_loss(self):
         with tf.name_scope("loss"):
