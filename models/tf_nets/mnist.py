@@ -4,9 +4,9 @@ from tensorflow.python.framework import dtypes
 import os
 
 mnist_files = ['train-images-idx3-ubyte',
-               'train-labels-idx1-ubtye',
+               'train-labels-idx1-ubyte',
                't10k-images-idx3-ubyte',
-               't10k-labels-idx1-ubtye']
+               't10k-labels-idx1-ubyte']
 
 img_header_type = np.dtype([('magic', '>i4'),
                             ('num_images', '>i4'),
@@ -39,11 +39,11 @@ def extract_labels(fobject, one_hot=True, num_classes=10):
 def read_mnist(loc='/mnt/mnist'):
     for file_name in mnist_files:
         error_msg = file_name + ' not found!'
-        assert os.path.exists(loc+file_name), error_msg
-    train_imgs_f = loc + mnist_files[0]
-    train_labels_f = loc + mnist_files[1]
-    test_imgs_f = loc + mnist_files[2]
-    test_labels_f = loc + mnist_files[3]
+        assert os.path.exists(os.path.join(loc,file_name)), error_msg
+    train_imgs_f = os.path.join(loc, mnist_files[0])
+    train_labels_f = os.path.join(loc, mnist_files[1])
+    test_imgs_f = os.path.join(loc, mnist_files[2])
+    test_labels_f = os.path.join(loc, mnist_files[3])
     # Read training images
     with open(train_imgs_f, 'rb') as f:
         train_iheader, train_imgs = extract_images(f)
