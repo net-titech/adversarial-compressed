@@ -33,6 +33,6 @@ from sys import argv
 
 from mnist import load_mnist
 from lenet import LeNet
-mnist_data = load_mnist()
+mnist_data = load_mnist(loc="/mnt/data/mnist")
 default_lenet = LeNet(name="default_lenet")
-default_lenet.train(mnist_data, epoch=5)
+default_lenet.train(mnist_data, epoch=30)
