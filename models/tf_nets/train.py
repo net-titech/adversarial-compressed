@@ -32,7 +32,12 @@ from sys import argv
 #    # TODO: Impl this
 
 from mnist import load_mnist
-from lenet import LeNet
+#from lenet import LeNet
 mnist_data = load_mnist(loc="/mnt/data/mnist")
-default_lenet = LeNet(name="default_lenet")
-default_lenet.train(mnist_data, epoch=30)
+#default_lenet = LeNet(name="default_lenet")
+#default_lenet.train(mnist_data, epoch=30)
+# => 0.89 error on testset
+
+from lenet_vd import LeNet_VDFC
+vdfc_lenet = LeNet_VDFC(name="vdfc1_lenet")
+vdfc_lenet.train(mnist_data, epoch=30)
