@@ -71,7 +71,7 @@ def read_mnist(loc='/mnt/mnist'):
     return train_imgs, train_labels, test_imgs, test_labels
 
 def load_mnist(loc='/mnt/mnist', one_hot=False, dtype=dtypes.float32,
-               val_size=5000, reshape=True):
+               val_size=5000, reshape=False):
     train_x, train_y, test_x, test_y = read_mnist(loc)
     assert 0 <= val_size <= len(train_x), "Invalid validation size!"
     if one_hot:

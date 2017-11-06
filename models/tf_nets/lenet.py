@@ -68,12 +68,12 @@ class LeNet(object):
 
     def _create_placeholders(self):
         with tf.name_scope("data"):
-            self.input = tf.placeholder(tf.float32, shape=[self.batch_size,
+            self.input = tf.placeholder(tf.float32, shape=[None,
                                                            self.image_size,
                                                            self.image_size,
                                                            self.image_channels],
                                          name="input_images")
-            self.labels = tf.placeholder(tf.int32, shape=[self.batch_size],
+            self.labels = tf.placeholder(tf.int32, shape=[None],
                                          name="train_labels")
         with tf.name_scope("settings"):
             self.training = tf.placeholder(tf.bool, shape=(), name="is_training")
@@ -165,7 +165,7 @@ class LeNet(object):
         writer.close()
 
     def train(self, data_gen, epoch=1, continue_from=None,
-              step_save=500, step_val=100, step_log=10):
+              step_save=5000, step_val=1000, step_log=100):
         if not self.built:
             self._build()
         opts = tf.ConfigProto(allow_soft_placement=True)
@@ -181,38 +181,43 @@ class LeNet(object):
             writer_train = tf.summary.FileWriter("./logs/train", sess.graph)
             writer_val = tf.summary.FileWriter("./logs/val", sess.graph)
             # Generate data and training
-            while data_gen.train.epoch_completed() < epoch:
-                print("======== Epoch {} ========".\
-                        format(data_gen.train.epoch_completed()+1))
-                for images, labels in data_gen.train.next_batch(self.batch_size):
-                    gl_step = self.global_step.eval()
-                    if gl_step % step_val == 0:
-                        # Training accuracies
-                        acc1 = sess.run([self.acc1], feed_dict={
-                            self.input: images, self.labels: labels,
-                            self.training: False})
-                        print("Step {}, training accuracy: {} (top 1)".\
-                            format(gl_step, acc1))
-                        # Validation accuracies
-                        val_images, val_labels = data_gen.val.next_batch(self.val_size)
-                        acc1, s = sess.run([self.acc1, self.summary_ops],
-                                           feed_dict={self.input: val_images,
-                                                      self.labels: val_labels,
-                                                      self.training: False})
-                        writer_val.add_summary(s, global_step=gl_step)
-                        print("Step {}, validation accuracy: {} (top 1)".\
-                            format(gl_step, acc1))
-                    # Training
-                    _, s, gl_step, bloss, lr = sess.run(
-                        [self.train_op, self.summary_ops, self.global_step,
-                         self.loss, self.optimizer._learning_rate_tensor],
-                        feed_dict={self.input: images,
-                                   self.labels: labels,
-                                   self.training: True})
-                    writer_train.add_summary(s, global_step=gl_step)
-                    if gl_step % step_log == 0:
-                        log_training(gl_step, bloss, lr)
-                    if gl_step % step_save == 0 and gl_step > 0:
-                        print("Saving checkpoint...")
-                        saver.save(sess, "./checkpoints/{}".format(self.name),
-                                   global_step = gl_step)
+            while data_gen.train.epochs_completed < epoch:
+                images, labels = data_gen.train.next_batch(self.batch_size)
+                gl_step = self.global_step.eval()
+                if gl_step % step_val == 0:
+                    # Training accuracies
+                    acc1 = sess.run([self.acc1], feed_dict={
+                        self.input: images, self.labels: labels,
+                        self.training: False})
+                    print("Step {}, training accuracy: {} (top 1)".\
+                        format(gl_step, acc1))
+                    # Validation accuracies
+                    val_images, val_labels = data_gen.val.next_batch(self.val_size)
+                    acc1, s = sess.run([self.acc1, self.summary_ops],
+                                       feed_dict={self.input: val_images,
+                                                  self.labels: val_labels,
+                                                  self.training: False})
+                    writer_val.add_summary(s, global_step=gl_step)
+                    print("Step {}, validation accuracy: {} (top 1)".\
+                        format(gl_step, acc1))
+                # Training
+                _, s, gl_step, bloss, lr = sess.run(
+                    [self.train_op, self.summary_ops, self.global_step,
+                     self.loss, self.optimizer._learning_rate_tensor],
+                    feed_dict={self.input: images,
+                               self.labels: labels,
+                               self.training: True})
+                writer_train.add_summary(s, global_step=gl_step)
+                if gl_step % step_log == 0:
+                    log_training(gl_step, bloss, lr)
+                if gl_step % step_save == 0 and gl_step > 0:
+                    print("Saving checkpoint...")
+                    saver.save(sess, "./checkpoints/{}".format(self.name),
+                               global_step = gl_step)
+            test_images, test_labels = data_gen.test.next_batch(10000)
+            acc1, s = sess.run([self.acc1, self.summary_ops],
+                               feed_dict={self.input: test_images,
+                               self.labels: test_labels, self.training: False})
+            print("Step {}, final test accuracy: {} (top 1)".\
+                  format(gl_step, acc1))
+
