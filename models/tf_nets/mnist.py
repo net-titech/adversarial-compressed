@@ -29,7 +29,7 @@ def extract_images(fobject):
     images = np.fromfile(fobject, dtype=img_type)
     return header, images
 
-def extract_labels(fobject, one_hot=True, num_classes=10):
+def extract_labels(fobject, one_hot=False, num_classes=10):
     header = np.fromfile(fobject, dtype=label_header_type, count=1)
     labels = np.fromfile(fobject, dtype=label_type)
     if one_hot:
@@ -70,7 +70,7 @@ def read_mnist(loc='/mnt/mnist'):
         assert test_lheader['num_items'] == 10000
     return train_imgs, train_labels, test_imgs, test_labels
 
-def load_mnist(loc='/mnt/mnist', one_hot=True, dtype=dtypes.float32,
+def load_mnist(loc='/mnt/mnist', one_hot=False, dtype=dtypes.float32,
                val_size=5000, reshape=True):
     train_x, train_y, test_x, test_y = read_mnist(loc)
     assert 0 <= val_size <= len(train_x), "Invalid validation size!"
