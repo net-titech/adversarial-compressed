@@ -180,8 +180,6 @@ class LeNet(object):
                 sess.run(tf.global_variables_initializer())
             writer_train = tf.summary.FileWriter("./logs/train", sess.graph)
             writer_val = tf.summary.FileWriter("./logs/val", sess.graph)
-            images_labels = data_gen(self.batch_size, "train")
-            val_images_labels = data_gen(self.batch_size, "val")
             # Generate data and training
             while data_gen.train.epoch_completed() < epoch:
                 print("======== Epoch {} ========".\
