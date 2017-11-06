@@ -48,10 +48,11 @@ class LeNet(object):
                  test_batch_size=100, val_size=5000,
                  image_size=28, image_channels=1,
                  num_classes=10, init_lr=0.01,
-                 momentum=0.9, gamma=1e-5,
+                 momentum=0.9, gamma=1e-5, lr_decay_step=1,
                  power=0.75, l2_scale=5e-4,
                  name="LeNet", summary_dir="./"):
         self.batch_size = train_batch_size
+        self.val_size = val_size
         self.image_size = image_size
         self.image_channels = image_channels
         self.num_classes = num_classes
@@ -62,6 +63,7 @@ class LeNet(object):
         self.built = False
         self.l2_scale = l2_scale
         self.momentum = momentum
+        self.lr_decay_step = lr_decay_step
         self.name = name
 
     def _create_placeholders(self):
@@ -108,9 +110,9 @@ class LeNet(object):
 
     def _create_loss(self):
         with tf.name_scope("loss"):
-            weights = [var for var in tf.global_variables() if "kernel" in var.name]
+            weights = [var for var in tf.global_variables() if r"/kernel:" in var.name]
             print("Debug: ", weights)
-            l2_term = tf.reduce_sum([tf.sqrt(tf.nn.l2_loss(w)) for w in weights])
+            l2_term = tf.reduce_sum([tf.nn.l2_loss(w) for w in weights])
             onehot_labels = tf.one_hot(indices=self.labels,
                                        depth=self.num_classes)
             loss = tf.losses.softmax_cross_entropy(onehot_labels, self.logits)
@@ -118,22 +120,19 @@ class LeNet(object):
             self.loss += self.l2_scale * l2_term
 
     def _create_optimizer(self):
-        # Global step for learning rate deca
         self.global_step = tf.Variable(0, dtype=tf.int32, trainable=False,
                                        name="global_step")
         with tf.name_scope("trainer"):
-            lr = tf.train.exponential_decay(self.lr, self.global_step,
-                                            self.lr_decay_step, self.gamma)
+            lr = caffe_inv_decay(self.lr, self.global_step,
+                                 self.lr_decay_step, self.gamma, self.power)
             self.optimizer = tf.train.MomentumOptimizer(lr, self.momentum)
             self.train_op = self.optimizer.minimize(self.loss,
                                                     global_step=self.global_step)
-            # TODO: Print learning rate
 
     def _create_summary(self):
         with tf.name_scope("summaries"):
             tf.summary.scalar("loss", self.loss)
             tf.summary.scalar("top1_accuracy", self.acc1)
-            tf.summary.scalar("top5_accuracy", self.acc5)
             tf.summary.histogram("loss_hist", self.loss)
             self.summary_ops = tf.summary.merge_all()
 
@@ -166,7 +165,7 @@ class LeNet(object):
         writer.close()
 
     def train(self, data_gen, data_size, epoch=1, continue_from=None,
-              step_save=10000, step_log=100, step_training_log=20):
+              step_save=500, step_val=100, step_log=10):
         if not self.built:
             self._build()
         opts = tf.ConfigProto(allow_soft_placement=True)
@@ -175,6 +174,7 @@ class LeNet(object):
         with tf.Session(config=opts, graph=self.graph) as sess:
             # Create session
             if continue_from is not None:
+                print("Continue training from " + continue_from)
                 saver.restore(sess, continue_from)
             else:
                 sess.run(tf.global_variables_initializer())
@@ -183,28 +183,27 @@ class LeNet(object):
             images_labels = data_gen(self.batch_size, "train")
             val_images_labels = data_gen(self.batch_size, "val")
             # Generate data and training
-            for e in range(epoch):
-                print("======== Epoch {} ========".format(e))
-                for _ in range(data_size//self.batch_size):
-                    images, labels = next(images_labels)
+            while data_gen.train.epoch_completed() < epoch:
+                print("======== Epoch {} ========".\
+                        format(data_gen.train.epoch_completed()+1))
+                for images, labels in data_gen.train.next_batch(self.batch_size):
                     gl_step = self.global_step.eval()
-                    if gl_step % step_log == 0:
+                    if gl_step % step_val == 0:
                         # Training accuracies
-                        acc1, acc5 = sess.run([self.acc1, self.acc5], feed_dict={
+                        acc1 = sess.run([self.acc1], feed_dict={
                             self.input: images, self.labels: labels,
                             self.training: False})
-                        print("Step {}, training accuracy: {} (top 1), {} (top 5)".\
-                            format(gl_step, acc1, acc5))
+                        print("Step {}, training accuracy: {} (top 1)".\
+                            format(gl_step, acc1))
                         # Validation accuracies
-                        val_images, val_labels = next(val_images_labels)
-                        acc1, acc5, s = sess.run([self.acc1, self.acc5,
-                                                  self.summary_ops],
-                                                 feed_dict={self.input: val_images,
-                                                           self.labels: val_labels,
-                                                         self.training: False})
+                        val_images, val_labels = data_gen.val.next_batch(self.val_size)
+                        acc1, s = sess.run([self.acc1, self.summary_ops],
+                                           feed_dict={self.input: val_images,
+                                                      self.labels: val_labels,
+                                                      self.training: False})
                         writer_val.add_summary(s, global_step=gl_step)
-                        print("Step {}, validation accuracy: {} (top 1), {} (top 5)".\
-                            format(gl_step, acc1, acc5))
+                        print("Step {}, validation accuracy: {} (top 1)".\
+                            format(gl_step, acc1))
                     # Training
                     _, s, gl_step, bloss, lr = sess.run(
                         [self.train_op, self.summary_ops, self.global_step,
@@ -213,11 +212,9 @@ class LeNet(object):
                                    self.labels: labels,
                                    self.training: True})
                     writer_train.add_summary(s, global_step=gl_step)
-                    if gl_step % step_training_log == 0:
+                    if gl_step % step_log == 0:
                         log_training(gl_step, bloss, lr)
                     if gl_step % step_save == 0 and gl_step > 0:
                         print("Saving checkpoint...")
                         saver.save(sess, "./checkpoints/{}".format(self.name),
                                    global_step = gl_step)
-
-

@@ -64,7 +64,7 @@ class Dataset(object):
 
     def next_batch(self, batch_size, fake_data=False, shuffle=True):
         if fake_data:
-            fake_image = [1] * 784
+            fake_image = [1] * 784  #TODO: Make generic class
             if self.one_hot:
                 fake_label = [1] + [0] * 9
             else:
