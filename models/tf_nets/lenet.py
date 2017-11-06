@@ -164,7 +164,7 @@ class LeNet(object):
             writer = tf.summary.FileWriter(folder, sess.graph)
         writer.close()
 
-    def train(self, data_gen, data_size, epoch=1, continue_from=None,
+    def train(self, data_gen, epoch=1, continue_from=None,
               step_save=500, step_val=100, step_log=10):
         if not self.built:
             self._build()
