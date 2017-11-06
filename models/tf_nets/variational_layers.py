@@ -34,11 +34,11 @@ class ConvVarDrop(layers.Conv2D):
         kernel_shape = self.kernel_size + (input_dim, self.filters)
         self.alpha = self.add_variable(name="alpha",
                                        shape=None,
-                                       initializer=tf.fill(kernel_shape, 
+                                       initializer=tf.fill(kernel_shape,
                                                            self.init_alpha),
                                        regularizer=self.alpha_reg,
                                        dtype=self.dtype,
-                                       trainable=True) 
+                                       trainable=True)
         if self.use_alpha_bias:
             print("Not implemented. Does it make sense?")
         super(ConvVarDrop, self).build(input_shape)
@@ -91,24 +91,24 @@ class DenseVarDrop(layers.Dense):
     Paper: Variational Dropout and the Local Reparameterization Trick
     (Kingma, 2015)
     """
-    def __init__(self, 
-                 init_alpha=1.0, 
-                 alpha_reg=None, 
+    def __init__(self,
+                 init_alpha=1.0,
+                 alpha_reg=None,
                  use_alpha_bias=False,
                  name="VarDropDense",
                  **kwargs):
         super().__init__(**kwargs)
         self.init_alpha = init_alpha
-        self.alpha_reg = alpha_reg 
+        self.alpha_reg = alpha_reg
         self.use_alpha_bias = use_alpha_bias
         self.name = name
 
     def build(self, input_shape, dropout_mode="weights"):
         # TODO: Implement weights and units dropout modes
         input_shape = tf.TensorShape(input_shape)
-        self.alpha = self.add_variable("alpha", 
+        self.alpha = self.add_variable("alpha",
                             shape=None,
-                            initializer=tf.fill([input_shape[-1].value, self.units], 
+                            initializer=tf.fill([input_shape[-1].value, self.units],
                                                 self.init_alpha),
                             regularizer=self.alpha_reg,
                             dtype=self.dtype,
@@ -137,7 +137,7 @@ class DenseVarDrop(layers.Dense):
             if len(output_shape) > 2:
                 # Broadcasting is required for the inputs
                 mean = tf.tensordot(tinputs, self.kernel, [[len(shape)-1], [0]])
-                var = tf.sqrt(eps+tf.tensordot(tinputs * tinputs, 
+                var = tf.sqrt(eps+tf.tensordot(tinputs * tinputs,
                                                alpha * kernel_sq))
                 outputs = mean + noise * var
                 # Reshape the output back to the org ndim
@@ -154,7 +154,7 @@ class DenseVarDrop(layers.Dense):
                 return self.activation(outputs)
             return outputs
         def mul_dense():  # TODO: Use super function
-            # Default dense layer behavior  
+            # Default dense layer behavior
             tinputs = tf.convert_to_tensor(inputs, dtype=self.dtype)
             shape = tinputs.get_shape().as_list()
             output_shape = shape[:1] + [self.units]
@@ -170,7 +170,7 @@ class DenseVarDrop(layers.Dense):
             if self.activation is not None:
                 return self.activation(outputs)
             return outputs
-        # Switch between training and testing        
+        # Switch between training and testing
         return tf.cond(training, vd_dropout, mul_dense)
 
 def denseVD(
@@ -199,7 +199,7 @@ def convVD(
 
 def vd_reg(alpha, constant=0.5, clip=True, max_val=1.0, min_val=eps):
     """Compute DK divergece between approximate
-    posterior and the prior. This term is refered 
+    posterior and the prior. This term is refered
     as a regularization term prefering the posterior
     to be similar to the prior."""
     # TODO: Think about the constant value

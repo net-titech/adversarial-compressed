@@ -14,7 +14,7 @@ class AlexNetVD(AlexNet):
         self.name="AlexNetVD"
         self.regularization_weight = regularization_weight
         self.num_samples = num_samples
-    
+
     def _create_net(self):
         with tf.name_scope("convolution_group"):
             # conv1 11x11x96
@@ -22,7 +22,7 @@ class AlexNetVD(AlexNet):
                                      kernel_size=11, strides=4,
                                      padding='same', activation=tf.nn.relu,
                                      name="conv1")
-            lrn1 = tf.nn.lrn(input=conv1, depth_radius=5, alpha=0.0001, 
+            lrn1 = tf.nn.lrn(input=conv1, depth_radius=5, alpha=0.0001,
                              beta=0.75, name="lrn1")
             maxpool1 = tf.layers.max_pooling2d(inputs=lrn1, pool_size=3,
                                                strides=2, padding="valid",
@@ -32,7 +32,7 @@ class AlexNetVD(AlexNet):
                                      kernel_size=5, strides=1,
                                      padding='same', activation=tf.nn.relu,
                                      name="conv2")
-            lrn2 = tf.nn.lrn(input=conv2, depth_radius=5, alpha=0.0001, 
+            lrn2 = tf.nn.lrn(input=conv2, depth_radius=5, alpha=0.0001,
                              beta=0.75, name="lrn1")
             maxpool2 = tf.layers.max_pooling2d(inputs=lrn2, pool_size=3,
                                                strides=2, padding="valid",
@@ -55,7 +55,7 @@ class AlexNetVD(AlexNet):
             maxpool5 = tf.layers.max_pooling2d(inputs=conv5, pool_size=3,
                                                strides=2, padding="valid",
                                                name="maxpool5")
-        with tf.name_scope("fully_connected_group"): 
+        with tf.name_scope("fully_connected_group"):
             # fc6 4096 units with variational dropout
             flat5 = tf.contrib.layers.flatten(maxpool5)
             fc6, lvdfc6 = denseVD(inputs=flat5, units=4096, training=self.training,
@@ -69,14 +69,14 @@ class AlexNetVD(AlexNet):
             self.logits, lvdfc8 = denseVD(inputs=fc7, training=self.training,
                                           init_alpha=self.init_alpha,
                                           units=self.num_classes, name="vdfc8")
-        
+
         self.vd_layers = [lvdfc6, lvdfc7, lvdfc8]
 
         with tf.name_scope("output"):
             self.predictions = {
                 "class": tf.argmax(input=self.logits, axis=1),
                 "probs": tf.nn.softmax(self.logits, name="softmax")
-            } 
+            }
         with tf.name_scope("accuracy"):
             acc_top1 = tf.nn.in_top_k(self.logits, self.labels, 1)
             acc_top5 = tf.nn.in_top_k(self.logits, self.labels, 5)
@@ -93,8 +93,8 @@ class AlexNetVD(AlexNet):
             lr = tf.train.exponential_decay(self.lr, self.global_step,
                                             self.lr_decay_step, self.gamma)
             self.optimizer = tf.train.GradientDescentOptimizer(lr)
-            self.train_op = self.optimizer.minimize(self.loss, 
-                                                    global_step=self.global_step) 
+            self.train_op = self.optimizer.minimize(self.loss,
+                                                    global_step=self.global_step)
 
     def _create_loss(self):
         # TODO: This is not the actual loss proposed in the paper
